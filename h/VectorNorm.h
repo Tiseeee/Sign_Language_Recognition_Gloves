@@ -5,7 +5,9 @@
 #ifndef HANDS_SEE_VECTORNORM_H
 #define HANDS_SEE_VECTORNORM_H
 
+#include <fstream>
 #include "HandStruct.h"
+using namespace std;
 
 struct VectorResult {
    //大拇指
@@ -25,6 +27,7 @@ struct VectorResult {
    float gyro3;
    float gyro4;
 };
+
 VectorResult VZero {0,0, 0,0,0,0,0,0,};
 
 VectorResult calculate(struct HandStruct &handStruct){
@@ -42,8 +45,23 @@ VectorResult calculate(struct HandStruct &handStruct){
    return Vtrl;
 }
 
-void output(struct VectorResult &result) {
-
+void output(VectorResult &Vtrl,int Recrod_Number) {
+   ofstream fout;
+   fout.open("Data_Record.json", ios::app);
+      fout << "Record{"<<endl;
+      fout <<"RightHandFirst:"<< Vtrl.RightHandFirst <<","<<'\n';
+      fout << "RightHandSecond:"<<Vtrl.RightHandSecond <<","<< '\n';
+      fout << "RightHandThird:"<<Vtrl.RightHandThird <<","<< '\n';
+      fout << "LeftHandFirst:"<<Vtrl.LeftHandFirst <<","<< '\n';
+      fout << "LeftHandSecond:"<<Vtrl.LeftHandSecond <<","<< '\n';
+      fout << "LeftHandThird:"<<Vtrl.LeftHandThird <<","<< '\n';
+      fout << "gyro1:"<<Vtrl.gyro1 <<","<< '\n';
+      fout << "gyro2:"<<Vtrl.gyro2 <<","<< '\n';
+      fout << "gyro3:"<<Vtrl.gyro3 <<","<< '\n';
+      fout << "gyro4:"<<Vtrl.gyro4 <<","<< '\n';
+      fout <<"}" << endl;
+      fout<<'\n';
+   fout.close();
 }
 
 #endif //HANDS_SEE_VECTORNORM_H

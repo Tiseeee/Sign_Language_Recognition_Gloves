@@ -6,4 +6,5 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(hands_see main.cpp
         h/HandStruct.h
         source/dictionaries.json
-        h/VectorNorm.h)
+        h/VectorNorm.h
+        h/Data_input.h)
