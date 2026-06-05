@@ -34,10 +34,10 @@ VectorResult calculate(struct HandStruct &handStruct){
    VectorResult Vtrl=VZero;
    Vtrl.RightHandFirst = handStruct.finger1;
    Vtrl.RightHandSecond = handStruct.finger2;
-   Vtrl.RightHandThird = (handStruct.finger3+handStruct.finger4+handStruct.finger5);
+   Vtrl.RightHandThird = (handStruct.finger3+handStruct.finger4+handStruct.finger5)/3;
    Vtrl.LeftHandFirst = handStruct.finger6;
    Vtrl.LeftHandSecond = handStruct.finger7;
-   Vtrl.LeftHandThird = (handStruct.finger8+handStruct.finger9+handStruct.finger10);
+   Vtrl.LeftHandThird = (handStruct.finger8+handStruct.finger9+handStruct.finger10)/3;
    Vtrl.gyro1=handStruct.gyro1;
    Vtrl.gyro2=handStruct.gyro2;
    Vtrl.gyro3=handStruct.gyro3;
@@ -45,7 +45,7 @@ VectorResult calculate(struct HandStruct &handStruct){
    return Vtrl;
 }
 
-void output(VectorResult &Vtrl,int Recrod_Number) {
+void output(VectorResult &Vtrl) {
    ofstream fout;
    fout.open("Data_Record.json", ios::app);
       fout << "Record{"<<endl;

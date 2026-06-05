@@ -7,4 +7,5 @@ add_executable(hands_see main.cpp
         h/HandStruct.h
         source/dictionaries.json
         h/VectorNorm.h
-        h/Data_input.h)
+        h/Data_input.h
+        h/Data_Training.h)

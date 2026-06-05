@@ -5,10 +5,9 @@
 #ifndef HANDS_SEE_HANDSTRUCT_H
 #define HANDS_SEE_HANDSTRUCT_H
 
-//建议time每次+1
-//手指分为五个档位
+//time每次+1
+//手指分为五个档位0,1,2,3,4
 //陀螺仪最大数为5.00
-//必须必须！没有数值检测。
 
 struct HandStruct {
     int time;
@@ -30,7 +29,7 @@ struct HandStruct {
     float gyro4;//左手小臂
 }handStruct;
 
-void InputStruct(HandStruct &handStruct,int f1,int f2,int f3,int f4,int f5,int f6,int f7,int f8,int f9,int f10,float gyro1,float gyro2,float gyro3,float gyro4) {
+void InputHandStruct(HandStruct &handStruct,int f1,int f2,int f3,int f4,int f5,int f6,int f7,int f8,int f9,int f10,float gyro1,float gyro2,float gyro3,float gyro4) {
         handStruct.time = handStruct.time + 1;
         handStruct.finger1 = f1;
         handStruct.finger2 = f2;
