@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import GSAP from 'gsap'
 import {Pane} from 'tweakpane'
+import { initWebSocket } from './websocket_client.js';
 
 // Pane
 const pane = new Pane({
@@ -13,16 +14,16 @@ const pane = new Pane({
 })
 const tab = pane.addTab({
   pages: [
-    {title: 'Hand 🤟'},
-    {title: 'Colors 🎨'},
+    {title: '手部 🤟'},
+    {title: '颜色 🎨'},
   ],
 })
 const clench = tab.pages[0].addFolder({
-  title: 'Clench',
+  title: '左手 握拳',
   expanded: false
 });
-const spread = tab.pages[0].addFolder({
-  title: 'Spread (WIP)',
+const rightClench = tab.pages[0].addFolder({
+  title: '右手 握拳',
   expanded: false
 });
 const PARAMS = {
@@ -30,27 +31,22 @@ const PARAMS = {
   hand: 0xE7A183,
   shirt: 0x303030,
   vest: 0xE7D55C,
-  wrist: 0.1,
-  thumb: 0.25,
-  index: 0.25,
-  middle: 1.1,
-  ring: 1.1,
-  pinky: 0.25,
-  thumbz: -0.15,
-  indexz: -0.3,
-  middlez: -0.08,
-  ringz: -0.22,
-  pinkyz: -0.52
+  wrist: 0,
+  thumb: 0,
+  index: 0,
+  middle: 0,
+  ring: 0,
+  pinky: 0
 }
 
-// Buttons
-const raisedHand = document.querySelector('#raised-hand')
-const raisedFinger = document.querySelector('#raised-finger')
-const rockOn = document.querySelector('#rock-on')
-const peace = document.querySelector('#peace')
-const hangLoose = document.querySelector('#hang-loose')
-const fu = document.querySelector('#fu')
-const vulcanSalute = document.querySelector('#vulcan-salute')
+const RIGHT_PARAMS = {
+  wrist: 0,
+  thumb: 0,
+  index: 0,
+  middle: 0,
+  ring: 0,
+  pinky: 0
+}
 
 const centerThresholdX = 10
 const centerThresholdY = 20
@@ -86,6 +82,7 @@ tab.pages[1].addInput(PARAMS, 'bg', {
   view: 'color',
   picker: 'inline',
   expanded: false,
+  label: '背景',
 }).on('change', (ev) => {
   scene.background = new THREE.Color(ev.value)
   document.body.style.backgroundColor = ev.value;
@@ -96,16 +93,70 @@ tab.pages[1].addInput(PARAMS, 'bg', {
  */
 const gltfLoader = new GLTFLoader()
 
+const leftHandGroup = new THREE.Group()
+const rightHandGroup = new THREE.Group()
+let rightHandMesh = null
+let rightHandSkeleton = null
+
 gltfLoader.load(
     'hand.glb',
     (gltf) =>
     {
-      scene.add(gltf.scene.children[0])
+      const leftHand = gltf.scene.children[0]
+      leftHandGroup.add(leftHand)
+      leftHandGroup.position.x = -1.8
+      scene.add(leftHandGroup)
 
       setMaterials()
       setBones()
+      loadRightHand()
     }
 )
+
+const loadRightHand = () => {
+  gltfLoader.load(
+    'righthand.glb',
+    (gltf) =>
+    {
+      console.log('右手模型加载成功:', gltf)
+      console.log('场景子节点:', gltf.scene.children)
+      
+      gltf.scene.traverse((child) => {
+        console.log('子节点:', child.name)
+        if (child.name === 'Hand') {
+          child.name = 'RightHand'
+          rightHandMesh = child
+          rightHandSkeleton = child.skeleton
+        } else if (child.name === 'Shirt') {
+          child.name = 'RightShirt'
+        } else if (child.name === 'Vest') {
+          child.name = 'RightVest'
+        }
+      })
+
+      const rightHand = gltf.scene.children[0]
+      if (!rightHand) {
+        console.error('右手模型子节点为空')
+        return
+      }
+      rightHandGroup.add(rightHand)
+      rightHandGroup.position.x = 1.8
+      rightHandGroup.visible = true
+      scene.add(rightHandGroup)
+
+      console.log('右手模型已添加到场景:', rightHandGroup)
+      console.log('右手位置:', rightHandGroup.position)
+
+      setRightMaterials()
+      setRightBones()
+      initRightHandController()
+    },
+    undefined,
+    (error) => {
+      console.error('右手模型加载失败:', error)
+    }
+  )
+}
 
 // Materials
 const handMaterial = new THREE.MeshToonMaterial()
@@ -139,24 +190,58 @@ const setMaterials = () => {
     view: 'color',
     picker: 'inline',
     expanded: false,
+    label: '手部',
   }).on('change', (ev) => {
     handMaterial.color = new THREE.Color(ev.value)
     handMaterial.emissive = new THREE.Color(PARAMS.hand)
+    rightHandMaterial.color = new THREE.Color(ev.value)
+    rightHandMaterial.emissive = new THREE.Color(PARAMS.hand)
   })
   tab.pages[1].addInput(PARAMS, 'shirt', {
     view: 'color',
     picker: 'inline',
     expanded: false,
+    label: '衬衫',
   }).on('change', (ev) => {
     shirtMaterial.color = new THREE.Color(ev.value)
+    rightShirtMaterial.color = new THREE.Color(ev.value)
   })
   tab.pages[1].addInput(PARAMS, 'vest', {
     view: 'color',
     picker: 'inline',
     expanded: false,
+    label: '背心',
   }).on('change', (ev) => {
     vestMaterial.color = new THREE.Color(ev.value)
+    rightVestMaterial.color = new THREE.Color(ev.value)
   })
+}
+
+const rightHandMaterial = new THREE.MeshToonMaterial()
+const rightShirtMaterial = new THREE.MeshToonMaterial()
+const rightVestMaterial = new THREE.MeshToonMaterial()
+
+const setRightMaterials = () => {
+  const textureLoader = new THREE.TextureLoader()
+  const gradientTexture = textureLoader.load('3.jpg')
+  gradientTexture.minFilter = THREE.NearestFilter
+  gradientTexture.magFilter = THREE.NearestFilter
+  gradientTexture.generateMipmaps = false
+
+  rightHandMaterial.color = new THREE.Color(PARAMS.hand)
+  rightHandMaterial.gradientMap = gradientTexture
+  rightHandMaterial.roughness = 0.7
+  rightHandMaterial.emissive = new THREE.Color(PARAMS.hand)
+  rightHandMaterial.emissiveIntensity = 0.2
+  scene.getObjectByName('RightHand').material = rightHandMaterial
+
+  rightShirtMaterial.color = new THREE.Color(PARAMS.shirt)
+  rightShirtMaterial.gradientMap = gradientTexture
+  scene.getObjectByName('RightShirt').material = rightShirtMaterial
+
+  rightVestMaterial.color = new THREE.Color(PARAMS.vest)
+  rightVestMaterial.gradientMap = gradientTexture
+  scene.getObjectByName('RightVest').material = rightVestMaterial
 }
 
 const setBones = () => {
@@ -180,9 +265,6 @@ const setBones = () => {
   thumb1.rotation.x = PARAMS.thumb
   thumb2.rotation.x = PARAMS.thumb
   thumb3.rotation.x = PARAMS.thumb
-  thumb1.rotation.z = PARAMS.thumbz
-  thumb2.rotation.z = PARAMS.thumbz
-  thumb3.rotation.z = PARAMS.thumbz
 
   const index1 = scene.getObjectByName('Hand').skeleton.bones[7]
   const index2 = scene.getObjectByName('Hand').skeleton.bones[8]
@@ -214,7 +296,7 @@ const setBones = () => {
 
   // PANE
   // Wrist
-  clench.addInput(PARAMS, 'wrist', {min: -0.4, max: 0.4, step: 0.01})
+  clench.addInput(PARAMS, 'wrist', {min: -0.4, max: 0.4, step: 0.01, label: '手腕'})
       .on('change', (ev) => {
         wrist.rotation.x = (ev.value)
         wrist1.rotation.x = (ev.value)
@@ -226,36 +308,24 @@ const setBones = () => {
       })
 
   // Thumb
-  clench.addInput(PARAMS, 'thumb', {min: 0, max: 0.9, step: 0.01})
+  clench.addInput(PARAMS, 'thumb', {min: 0, max: 0.9, step: 0.01, label: '拇指'})
       .on('change', (ev) => {
         thumb1.rotation.x = (ev.value)
         thumb2.rotation.x = (ev.value)
         thumb3.rotation.x = (ev.value)
       })
 
-  spread.addInput(PARAMS, 'thumbz', {min: -0.4, max: 0.3, step: 0.01})
-      .on('change', (ev) => {
-        thumb1.rotation.z = (ev.value)
-        thumb2.rotation.z = (ev.value)
-        thumb3.rotation.z = (ev.value)
-      })
-
   // Index
-  clench.addInput(PARAMS, 'index', {min: 0, max: 1.1, step: 0.01})
+  clench.addInput(PARAMS, 'index', {min: 0, max: 1.1, step: 0.01, label: '食指'})
       .on('change', (ev) => {
         index1.rotation.x = (ev.value)
         index2.rotation.x = (ev.value)
         index3.rotation.x = (ev.value)
       })
 
-  spread.addInput(PARAMS, 'indexz', {min: -0.5, max: 0, step: 0.01})
-      .on('change', (ev) => {
-        index1.rotation.z = (ev.value)
-      })
-
   // Middle
   clench.addInput(PARAMS, 'middle',
-      {min: 0, max: 1.25, step: 0.01}
+      {min: 0, max: 1.25, step: 0.01, label: '中指'}
   )
       .on('change', (ev) => {
         middle1.rotation.x = (ev.value)
@@ -263,310 +333,193 @@ const setBones = () => {
         middle3.rotation.x = (ev.value)
       })
 
-  spread.addInput(PARAMS, 'middlez', {min: -0.35, max: 0.25, step: 0.01})
-      .on('change', (ev) => {
-        middle1.rotation.z = (ev.value)
-      })
-
   // Ring
-  clench.addInput(PARAMS, 'ring', {min: 0, max: 1.25, step: 0.01})
+  clench.addInput(PARAMS, 'ring', {min: 0, max: 1.25, step: 0.01, label: '无名指'})
       .on('change', (ev) => {
         ring1.rotation.x = (ev.value)
         ring2.rotation.x = (ev.value)
         ring3.rotation.x = (ev.value)
       })
 
-  spread.addInput(PARAMS, 'ringz', {min: -0.4, max: 0.2, step: 0.01})
-      .on('change', (ev) => {
-        wrist5.position.x + (ev.value) * 0.1
-        wrist5.position.y - (ev.value) * 0.1
-        ring1.rotation.z = -(ev.value)
-      })
-
   // Pinky
-  clench.addInput(PARAMS, 'pinky', {min: 0, max: 1.15, step: 0.01})
+  clench.addInput(PARAMS, 'pinky', {min: 0, max: 1.15, step: 0.01, label: '小指'})
       .on('change', (ev) => {
         pinky1.rotation.x = (ev.value)
         pinky2.rotation.x = (ev.value)
         pinky3.rotation.x = (ev.value)
       })
 
-  spread.addInput(PARAMS, 'pinkyz', {min: -0.52, max: -0.25, step: 0.01})
-      .on('change', (ev) => {
-        wrist6.position.x + (ev.value) * 0.1
-        pinky1.rotation.z = -(ev.value)
-      })
+  }
 
-  /**
-   * Poses
-   */
+const setRightBones = () => {
+  const bones = rightHandSkeleton.bones
 
-  const wristRotation = [wrist.rotation, wrist1.rotation, wrist2.rotation, wrist3.rotation, wrist4.rotation, wrist5.rotation, wrist6.rotation]
-  const thumbRotation = [thumb1.rotation, thumb2.rotation, thumb3.rotation]
-  const indexRotation = [index1.rotation, index2.rotation, index3.rotation]
-  const middleRotation = [middle1.rotation, middle2.rotation, middle3.rotation]
-  const ringRotation = [ring1.rotation, ring2.rotation, ring3.rotation]
-  const pinkyRotation = [pinky1.rotation, pinky2.rotation, pinky3.rotation]
+  const rightWrist = bones[0]
+  const rightWrist1 = bones[1]
+  const rightWrist2 = bones[2]
+  const rightWrist3 = bones[6]
+  const rightWrist4 = bones[10]
+  const rightWrist5 = bones[14]
+  const rightWrist6 = bones[18]
+  rightWrist.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist1.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist2.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist3.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist4.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist5.rotation.x = RIGHT_PARAMS.wrist
+  rightWrist6.rotation.x = RIGHT_PARAMS.wrist
 
-  raisedHand.addEventListener('click', () => {
-    const tlRaisedHand = GSAP.timeline()
-    let bgColor = new THREE.Color(0xbcbcbc)
-    let handColor = new THREE.Color(0xc5c5c5)
-    let shirtColor = new THREE.Color(0x666666)
-    let vestColor = new THREE.Color(0x191919)
+  const rightThumb1 = bones[3]
+  const rightThumb2 = bones[4]
+  const rightThumb3 = bones[5]
+  rightThumb1.rotation.x = RIGHT_PARAMS.thumb
+  rightThumb2.rotation.x = RIGHT_PARAMS.thumb
+  rightThumb3.rotation.x = RIGHT_PARAMS.thumb
 
-    tlRaisedHand
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0xbcbcbc, hand: 0xc5c5c5, shirt: 0x666666, vest: 0x191919,
-          wrist: 0,
-          thumb: 0, index: 0, middle: 0, ring: 0, pinky: 0,
-          thumbz: -0.15, indexz: -0.30, middlez: -0.08, ringz: -0.22, pinkyz: -0.52,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.15 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.30 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.08 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.52 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+  const rightIndex1 = bones[7]
+  const rightIndex2 = bones[8]
+  const rightIndex3 = bones[9]
+  rightIndex1.rotation.x = RIGHT_PARAMS.index
+  rightIndex2.rotation.x = RIGHT_PARAMS.index
+  rightIndex3.rotation.x = RIGHT_PARAMS.index
 
-  raisedFinger.addEventListener('click', () => {
-    const tlRaisedFinger = GSAP.timeline()
-    let bgColor = new THREE.Color(0xaf5f54)
-    let handColor = new THREE.Color(0xe7a183)
-    let shirtColor = new THREE.Color(0xc7d2eb)
-    let vestColor = new THREE.Color(0x274479)
+  const rightMiddle1 = bones[11]
+  const rightMiddle2 = bones[12]
+  const rightMiddle3 = bones[13]
+  rightMiddle1.rotation.x = RIGHT_PARAMS.middle
+  rightMiddle2.rotation.x = RIGHT_PARAMS.middle
+  rightMiddle3.rotation.x = RIGHT_PARAMS.middle
 
-    tlRaisedFinger
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0xaf5f54, hand: 0xe7a183, shirt: 0xc7d2eb, vest: 0x274479,
-          wrist: 0,
-          thumb: 0.9, index: 0, middle: 1.25, ring: 1.25, pinky: 1.15,
-          thumbz: -0.15, indexz: -0.30, middlez: -0.08, ringz: -0.22, pinkyz: -0.52,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0.9 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 1.15 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.15 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.30 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.08 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.52 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+  const rightRing1 = bones[15]
+  const rightRing2 = bones[16]
+  const rightRing3 = bones[17]
+  rightRing1.rotation.x = RIGHT_PARAMS.ring
+  rightRing2.rotation.x = RIGHT_PARAMS.ring
+  rightRing3.rotation.x = RIGHT_PARAMS.ring
 
-  rockOn.addEventListener('click', () => {
-    const tlRockOn = GSAP.timeline()
-    let bgColor = new THREE.Color(0x4b46b2)
-    let handColor = new THREE.Color(0xe7a183)
-    let shirtColor = new THREE.Color(0x303030)
-    let vestColor = new THREE.Color(0xe7d55c)
+  const rightPinky1 = bones[19]
+  const rightPinky2 = bones[20]
+  const rightPinky3 = bones[21]
+  rightPinky1.rotation.x = RIGHT_PARAMS.pinky
+  rightPinky2.rotation.x = RIGHT_PARAMS.pinky
+  rightPinky3.rotation.x = RIGHT_PARAMS.pinky
 
-    tlRockOn
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0x4b46b2, hand: 0xe7a183, shirt: 0x303030, vest: 0xe7d55c,
-          wrist: 0.1,
-          thumb: 0.25, index: 0.25, middle: 1.1, ring: 1.1, pinky: 0.25,
-          thumbz: -0.15, indexz: -0.30, middlez: -0.08, ringz: -0.22, pinkyz: -0.52,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0.1 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0.25 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 0.25 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 1.1 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 1.1 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 0.25 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.15 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.30 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.08 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.52 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+  const syncRightHand = () => {
+    rightWrist.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist1.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist2.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist3.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist4.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist5.rotation.x = RIGHT_PARAMS.wrist
+    rightWrist6.rotation.x = RIGHT_PARAMS.wrist
 
-  peace.addEventListener('click', () => {
-    const tlPeace = GSAP.timeline()
-    let bgColor = new THREE.Color(0xe2ceab)
-    let handColor = new THREE.Color(0x624122)
-    let shirtColor = new THREE.Color(0xccb4a2)
-    let vestColor = new THREE.Color(0xbf6f30)
+    rightThumb1.rotation.x = RIGHT_PARAMS.thumb
+    rightThumb2.rotation.x = RIGHT_PARAMS.thumb
+    rightThumb3.rotation.x = RIGHT_PARAMS.thumb
 
-    tlPeace
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0xe2ceab, hand: 0x624122, shirt: 0xccb4a2, vest: 0xbf6f30,
-          wrist: 0,
-          thumb: 0.9, index: 0, middle: 0, ring: 1.25, pinky: 1.15,
-          thumbz: -0.15, indexz: -0.03, middlez: -0.23, ringz: -0.22, pinkyz: -0.52,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0.9 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 1.15 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.15 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.03 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.23 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.52 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+    rightIndex1.rotation.x = RIGHT_PARAMS.index
+    rightIndex2.rotation.x = RIGHT_PARAMS.index
+    rightIndex3.rotation.x = RIGHT_PARAMS.index
 
-  hangLoose.addEventListener('click', () => {
-    const tlHangLoose = GSAP.timeline()
-    let bgColor = new THREE.Color(0x1389d8)
-    let handColor = new THREE.Color(0xb69621)
-    let shirtColor = new THREE.Color(0xbbdae8)
-    let vestColor = new THREE.Color(0xbf3131)
+    rightMiddle1.rotation.x = RIGHT_PARAMS.middle
+    rightMiddle2.rotation.x = RIGHT_PARAMS.middle
+    rightMiddle3.rotation.x = RIGHT_PARAMS.middle
 
-    tlHangLoose
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0x1389d8, hand: 0xb69621, shirt: 0xbbdae8, vest: 0xbf3131,
-          wrist: 0,
-          thumb: 0, index: 1.1, middle: 1.25, ring: 1.25, pinky: 0,
-          thumbz: -0.04, indexz: -0.30, middlez: -0.08, ringz: -0.22, pinkyz: -0.25,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 1.1 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.04 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.30 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.08 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.25 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+    rightRing1.rotation.x = RIGHT_PARAMS.ring
+    rightRing2.rotation.x = RIGHT_PARAMS.ring
+    rightRing3.rotation.x = RIGHT_PARAMS.ring
 
-  fu.addEventListener('click', () => {
-    const tlFu = GSAP.timeline()
-    let bgColor = new THREE.Color(0x156259)
-    let handColor = new THREE.Color(0xc1b7e5)
-    let shirtColor = new THREE.Color(0x568f46)
-    let vestColor = new THREE.Color(0x822bc2)
+    rightPinky1.rotation.x = RIGHT_PARAMS.pinky
+    rightPinky2.rotation.x = RIGHT_PARAMS.pinky
+    rightPinky3.rotation.x = RIGHT_PARAMS.pinky
+  }
 
-    tlFu
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0x156259, hand: 0xc1b7e5, shirt: 0x568f46, vest: 0x822bc2,
-          wrist: 0,
-          thumb: 0.9, index: 1.1, middle: 0, ring: 1.25, pinky: 1.15,
-          thumbz: -0.15, indexz: -0.30, middlez: -0.08, ringz: -0.22, pinkyz: -0.52,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0.9 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 1.1 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 1.25 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 1.15 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: -0.15 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.30 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: -0.08 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.52 }, 'same')
-        .to(document.body, { duration: 0.5, backgroundColor: bgColor  }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+  rightClench.addInput(RIGHT_PARAMS, 'wrist', {min: -0.4, max: 0.4, step: 0.01, label: '手腕'})
+      .on('change', syncRightHand)
 
-  vulcanSalute.addEventListener('click', () => {
-    const tlVulcanSalute = GSAP.timeline()
-    let bgColor = new THREE.Color(0x000000)
-    let handColor = new THREE.Color(0x1c7f56)
-    let shirtColor = new THREE.Color(0x922323)
-    let vestColor = new THREE.Color(0xb1c8c2)
+  rightClench.addInput(RIGHT_PARAMS, 'thumb', {min: 0, max: 0.9, step: 0.01, label: '拇指'})
+      .on('change', syncRightHand)
 
-    tlVulcanSalute
-        .to(PARAMS, {
-          duration: 0,
-          bg: 0x000000, hand: 0x1c7f56, shirt: 0x922323, vest: 0xb1c8c2,
-          wrist: 0,
-          thumb: 0, index: 0, middle: 0, ring: 0, pinky: 0,
-          thumbz: 0.08, indexz: -0.05, middlez: 0.22, ringz: 0.04, pinkyz: -0.34,
-        }, 'same')
-        .to(wristRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(indexRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(middleRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(ringRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(pinkyRotation, { duration: 0.5, x: 0 }, 'same')
-        .to(thumbRotation, { duration: 0.5, z: 0.08 }, 'same')
-        .to(indexRotation[0], { duration: 0.5, z: -0.05 }, 'same')
-        .to(middleRotation[0], { duration: 0.5, z: 0.22 }, 'same')
-        .to(ringRotation[0], { duration: 0.5, z: -0.04 }, 'same')
-        .to(pinkyRotation[0], { duration: 0.5, z: 0.34 }, 'same')
-        .to(scene.background, { duration: 0.5, r: bgColor.r, g: bgColor.g, b: bgColor.b  }, 'same')
-        .to(handMaterial.color, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(handMaterial.emissive, { duration: 0.5, r: handColor.r, g: handColor.g, b: handColor.b  }, 'same')
-        .to(shirtMaterial.color, { duration: 0.5, r: shirtColor.r, g: shirtColor.g, b: shirtColor.b  }, 'same')
-        .to(vestMaterial.color, { duration: 0.5, r: vestColor.r, g: vestColor.g, b: vestColor.b  }, 'same')
-        .call(() => {
-          pane.refresh()
-        })
-        .play()
-  })
+  rightClench.addInput(RIGHT_PARAMS, 'index', {min: 0, max: 1.1, step: 0.01, label: '食指'})
+      .on('change', syncRightHand)
+
+  rightClench.addInput(RIGHT_PARAMS, 'middle', {min: 0, max: 1.25, step: 0.01, label: '中指'})
+      .on('change', syncRightHand)
+
+  rightClench.addInput(RIGHT_PARAMS, 'ring', {min: 0, max: 1.25, step: 0.01, label: '无名指'})
+      .on('change', syncRightHand)
+
+  rightClench.addInput(RIGHT_PARAMS, 'pinky', {min: 0, max: 1.15, step: 0.01, label: '小指'})
+      .on('change', syncRightHand)
+
+  window.rightBonesSync = syncRightHand
+}
+
+const initRightHandController = () => {
+  window.rightHandController = {
+    show: () => {
+      rightHandGroup.visible = true
+    },
+    hide: () => {
+      rightHandGroup.visible = false
+    },
+    toggle: () => {
+      rightHandGroup.visible = !rightHandGroup.visible
+      return rightHandGroup.visible
+    },
+    setPosition: (x, y, z) => {
+      rightHandGroup.position.set(x, y, z)
+    },
+    setScale: (scale) => {
+      rightHandGroup.scale.set(scale, scale, scale)
+    },
+    setRotation: (x, y, z) => {
+      rightHandGroup.rotation.set(x, y, z)
+    },
+    setPose: (fingerData) => {
+      if (!rightHandSkeleton) return
+      const bones = rightHandSkeleton.bones
+      const boneMap = {
+        thumb: [3, 4, 5],
+        index: [7, 8, 9],
+        middle: [11, 12, 13],
+        ring: [15, 16, 17],
+        pinky: [19, 20, 21],
+      }
+      for (const [key, indices] of Object.entries(boneMap)) {
+        const val = fingerData[key] || 0
+        for (const idx of indices) {
+          if (bones[idx]) bones[idx].rotation.x = val
+        }
+      }
+    },
+    setWristRotation: (x) => {
+      if (!rightHandSkeleton) return
+      const bones = rightHandSkeleton.bones
+      const wristIndices = [1, 2, 6, 10, 14, 18]
+      for (const idx of wristIndices) {
+        if (bones[idx]) bones[idx].rotation.x = x
+      }
+    },
+    syncWithLeft: () => {
+      RIGHT_PARAMS.wrist = PARAMS.wrist
+      RIGHT_PARAMS.thumb = PARAMS.thumb
+      RIGHT_PARAMS.index = PARAMS.index
+      RIGHT_PARAMS.middle = PARAMS.middle
+      RIGHT_PARAMS.ring = PARAMS.ring
+      RIGHT_PARAMS.pinky = PARAMS.pinky
+      if (window.rightBonesSync) {
+        window.rightBonesSync()
+      }
+    },
+    getVisible: () => rightHandGroup.visible,
+    getPosition: () => ({ x: rightHandGroup.position.x, y: rightHandGroup.position.y, z: rightHandGroup.position.z }),
+    getSkeleton: () => rightHandSkeleton,
+    getMesh: () => rightHandMesh,
+    getGroup: () => rightHandGroup
+  }
+
+  console.log('右手控制器已初始化')
 }
 
 /**
@@ -692,3 +645,11 @@ window.We = scene;           // Three.js 场景，用于查找骨骼
 window.Vi = pane;            // Tweakpane 实例，用于刷新 UI
 window.PARAMS = PARAMS;      // 可选，已存在
 console.log('目标暴露成功，可使用串口修改');
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        initWebSocket();
+    });
+} else {
+    initWebSocket();
+}

@@ -195,23 +195,47 @@ class SerialFingerController {
 
     _updateBones(fingerData) {
         const hand = window.We?.getObjectByName?.('Hand');
-        if (!hand || !hand.skeleton) return;
-        const bones = hand.skeleton.bones;
-        if (!bones) return;
-
-        const boneMap = {
-            thumb: [3, 4, 5],
-            index: [7, 8, 9],
-            middle: [11, 12, 13],
-            ring: [15, 16, 17],
-            pinky: [19, 20, 21],
-        };
-
-        for (const [key, indices] of Object.entries(boneMap)) {
-            const val = fingerData[key] || 0;
-            for (const idx of indices) {
-                if (bones[idx]) bones[idx].rotation.x = val;
+        if (hand && hand.skeleton) {
+            const bones = hand.skeleton.bones;
+            if (bones) {
+                const boneMap = {
+                    thumb: [3, 4, 5],
+                    index: [7, 8, 9],
+                    middle: [11, 12, 13],
+                    ring: [15, 16, 17],
+                    pinky: [19, 20, 21],
+                };
+                for (const [key, indices] of Object.entries(boneMap)) {
+                    const val = fingerData[key] || 0;
+                    for (const idx of indices) {
+                        if (bones[idx]) bones[idx].rotation.x = val;
+                    }
+                }
             }
+        }
+
+        const rightHand = window.We?.getObjectByName?.('RightHand');
+        if (rightHand && rightHand.skeleton) {
+            const rightBones = rightHand.skeleton.bones;
+            if (rightBones) {
+                const boneMap = {
+                    thumb: [3, 4, 5],
+                    index: [7, 8, 9],
+                    middle: [11, 12, 13],
+                    ring: [15, 16, 17],
+                    pinky: [19, 20, 21],
+                };
+                for (const [key, indices] of Object.entries(boneMap)) {
+                    const val = fingerData[key] || 0;
+                    for (const idx of indices) {
+                        if (rightBones[idx]) rightBones[idx].rotation.x = val;
+                    }
+                }
+            }
+        }
+
+        if (window.rightHandController) {
+            window.rightHandController.syncWithLeft();
         }
     }
 }
@@ -397,6 +421,31 @@ function createSerialUI() {
     container.appendChild(freqLabel);
     container.appendChild(freqSelect);
     container.appendChild(freqBtn);
+
+    // 添加分隔线
+    const divider = document.createElement('span');
+    divider.textContent = '|';
+    divider.style.cssText = `color: #555; margin: 0 4px;`;
+    container.appendChild(divider);
+
+    // 添加截图按钮
+    const screenshotBtn = document.createElement('button');
+    screenshotBtn.id = 'screenshot';
+    screenshotBtn.textContent = '📷 保存图片';
+    screenshotBtn.style.cssText = `
+    padding: 6px 16px;
+    border: 1px solid #3498db;
+    border-radius: 6px;
+    background: transparent;
+    color: #3498db;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    transition: all 0.2s;
+  `;
+    screenshotBtn.onmouseover = () => screenshotBtn.style.background = 'rgba(52,152,219,0.2)';
+    screenshotBtn.onmouseout = () => screenshotBtn.style.background = 'transparent';
+    container.appendChild(screenshotBtn);
 
     container.appendChild(statusEl);
     document.body.appendChild(container);
