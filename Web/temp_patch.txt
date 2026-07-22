@@ -1,0 +1,33 @@
+﻿*** Begin Patch
+*** Update File: main.js
+@@ /**
+ * Capture
+ */
+const saveImage = document.querySelector('#screenshot')
+
+saveImage.addEventListener('click', () => {
+  outlineEffect.render(scene, camera)
+  canvas.toBlob((blob) => {
+    saveBlob(blob, \screencapture-\x\.png\)
+  })
+})
+
+const saveBlob = (function() {
+  const a = document.createElement('a')
+  document.body.appendChild(a)
+  a.style.display = 'none'
+  return function saveData(blob, fileName) {
+    const url = window.URL.createObjectURL(blob)
+    a.href = url
+    a.download = fileName
+    a.click()
+  }
+}())
+
+/**
+ * Animate
+@@ 
+
+/**
+ * Animate
+*** End Patch

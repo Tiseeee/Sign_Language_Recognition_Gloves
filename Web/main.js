@@ -591,30 +591,6 @@ const outlineEffect = new OutlineEffect(renderer, {
 })
 
 /**
- * Capture
- */
-const saveImage = document.querySelector('#screenshot')
-
-saveImage.addEventListener('click', () => {
-  outlineEffect.render(scene, camera)
-  canvas.toBlob((blob) => {
-    saveBlob(blob, `screencapture-${canvas.width}x${canvas.height}.png`)
-  })
-})
-
-const saveBlob = (function() {
-  const a = document.createElement('a')
-  document.body.appendChild(a)
-  a.style.display = 'none'
-  return function saveData(blob, fileName) {
-    const url = window.URL.createObjectURL(blob)
-    a.href = url
-    a.download = fileName
-    a.click()
-  }
-}())
-
-/**
  * Animate
  */
 const clock = new THREE.Clock()

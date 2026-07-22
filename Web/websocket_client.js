@@ -9,22 +9,26 @@ export function initWebSocket() {
         panel.id = 'detection-panel';
         panel.style.cssText = `
             position: fixed;
-            top: 80px;
-            right: 20px;
-            max-width: 300px;
-            background: rgba(0,0,0,0.75);
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 400px;
+            min-width: 200px;
             color: #fff;
             padding: 12px 16px;
             border-radius: 8px;
             font-family: 'IBM Plex Mono', monospace;
             font-size: 13px;
             z-index: 1000;
+            background: rgba(0,0,0,0.75);
             backdrop-filter: blur(6px);
-            max-height: 80vh;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            max-height: 120px;
             overflow-y: auto;
             pointer-events: none;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            transition: background 0.3s, box-shadow 0.3s;
         `;
+        panel.innerHTML = '<div style="color:#888;">🔗 正在连接...</div>';
         document.body.appendChild(panel);
     }
 
@@ -34,6 +38,8 @@ export function initWebSocket() {
     };
 
     ws.onmessage = (event) => {
+        // 串口校准期间不更新 WebSocket 检测结果
+        if (window.serialCalibrating) return;
         try {
             const data = JSON.parse(event.data);
             if (data.detections) {
@@ -58,15 +64,24 @@ export function initWebSocket() {
 
     ws.onerror = (error) => {
         console.error('WebSocket 错误:', error);
-        panel.innerHTML = '<div style="color:#e74c3c;">❌ 连接错误，请检查 Python 服务</div>';
+        if (!window.serialCalibrating) {
+            panel.innerHTML = '<div style="color:#e74c3c;">❌ 连接错误，请检查 Python 服务</div>';
+        }
     };
 
     ws.onclose = () => {
         console.log('🔌 WebSocket 已断开');
-        panel.innerHTML = '<div style="color:#e74c3c;">⚠️ 已断开连接，尝试重连...</div>';
+        if (!window.serialCalibrating) {
+            panel.innerHTML = '<div style="color:#e74c3c;">⚠️ 已断开连接，尝试重连...</div>';
+        }
         // 尝试重连（5秒后）
         setTimeout(() => {
             initWebSocket();
         }, 5000);
     };
+
+    // 暴露面板控制供串口模块使用
+    window.setDetectionPanel = (html) => { panel.innerHTML = html; };
+    window.appendDetectionPanel = (html) => { panel.innerHTML += html; };
+    window.getDetectionPanel = () => panel;
 }

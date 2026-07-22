@@ -12,8 +12,20 @@ class SerialFingerController {
         this.port = null;
         this.reader = null;
         this.isConnected = false;
+        this.connectionType = null;   // 'serial' | 'bluetooth'
         this.buffer = '';
         this.onFingerData = null;
+        // 蓝牙相关
+        this.bluetoothDevice = null;
+        this.bluetoothServer = null;
+        this.bluetoothTxChar = null;
+        this.bluetoothRxChar = null;
+
+        // BLE Nordic UART Service (ESP32-S3 等 BLE 设备使用)
+        // 可自定义：fingerSerial.bleServiceUUID / bleTxUUID / bleRxUUID
+        this.bleServiceUUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        this.bleTxUUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        this.bleRxUUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
         this.FINGER_KEYS = ['thumb', 'index', 'middle', 'ring', 'pinky', 'wrist'];
         this.FINGER_MAX = {
@@ -39,7 +51,15 @@ class SerialFingerController {
             this.port = await navigator.serial.requestPort();
             await this.port.open({ baudRate, dataBits: 8, stopBits: 1, parity: 'none' });
             this.isConnected = true;
+            this._calibrated = false;
+            this._validCount = 0;
+            this._calibrationRequired = 3;
+            window.serialCalibrating = true;
+            if (window.setDetectionPanel) {
+                window.setDetectionPanel('<div style="color:#f39c12;">⏳ 校准中，等待有效数据...</div>');
+            }
             console.log(`✅ 串口已连接 (${baudRate} bps)`);
+            this.connectionType = 'serial';
             this._startReading();
             return true;
         } catch (e) {
@@ -49,17 +69,140 @@ class SerialFingerController {
         }
     }
 
-    async disconnect() {
-        if (this.reader) {
-            try { await this.reader.cancel(); } catch (e) {}
-            this.reader = null;
+    // ---------- BLE 蓝牙连接 (Nordic UART Service) ----------
+    // ESP32-S3 等 BLE 设备使用此方法
+    // 如果你的 BLE 设备使用不同 UUID，连接前修改：
+    //   fingerSerial.bleServiceUUID = '你的服务UUID';
+    //   fingerSerial.bleTxUUID = '你的TX特征UUID';
+    //   fingerSerial.bleRxUUID = '你的RX特征UUID';
+    async connectBluetooth() {
+        if (!('bluetooth' in navigator)) {
+            alert('❌ 当前浏览器不支持 Web Bluetooth API，请使用 Chrome 或 Edge。');
+            return false;
         }
-        if (this.port) {
-            try { await this.port.close(); } catch (e) {}
-            this.port = null;
+        try {
+            this.bluetoothDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [this.bleServiceUUID] }],
+                optionalServices: [this.bleServiceUUID]
+            });
+            this.bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+                console.log('🔌 BLE 设备已断开');
+                this.isConnected = false;
+                this.connectionType = null;
+            });
+
+            this.bluetoothServer = await this.bluetoothDevice.gatt.connect();
+            const service = await this.bluetoothServer.getPrimaryService(this.bleServiceUUID);
+
+            // 🔍 先列出所有特征，诊断实际属性
+            const chars = await service.getCharacteristics();
+            console.log(`📋 BLE 服务 ${this.bleServiceUUID} 共有 ${chars.length} 个特征:`);
+            const notifyCandidates = [];
+            const writeCandidates = [];
+            for (const c of chars) {
+                const props = [];
+                if (c.properties.read) props.push('read');
+                if (c.properties.write) props.push('write');
+                if (c.properties.writeWithoutResponse) props.push('writeWithoutResponse');
+                if (c.properties.notify) props.push('notify');
+                if (c.properties.indicate) props.push('indicate');
+                console.log(`   UUID: ${c.uuid}  属性: [${props.join(', ')}]`);
+                if (c.properties.notify || c.properties.indicate) notifyCandidates.push(c);
+                if (c.properties.writeWithoutResponse || c.properties.write) writeCandidates.push(c);
+            }
+
+            // 优先按硬编码 UUID 匹配，失败则按属性自动适配
+            // ESP32 固件实际映射: bleRxUUID(6E400003)=NOTIFY, bleTxUUID(6E400002)=WRITE
+            // --- 接收特征 (notify/indicate): 使用 bleRxUUID (6E400003) ---
+            try {
+                this.bluetoothRxChar = await service.getCharacteristic(this.bleRxUUID);
+                if (!(this.bluetoothRxChar.properties.notify || this.bluetoothRxChar.properties.indicate)) {
+                    throw new Error(`特征 ${this.bleRxUUID} 不支持 notify/indicate`);
+                }
+                console.log(`✅ 接收(NOTIFY)特征按 UUID 匹配: ${this.bleRxUUID}`);
+            } catch (e) {
+                console.warn(`⚠️ UUID 匹配接收特征失败: ${e.message}，尝试按属性自动匹配...`);
+                if (notifyCandidates.length > 0) {
+                    this.bluetoothRxChar = notifyCandidates[0];
+                    console.log(`✅ 自动匹配接收特征: ${this.bluetoothRxChar.uuid}`);
+                } else {
+                    throw new Error('未找到任何支持 notify/indicate 的特征，请检查 ESP32 BLE 固件配置');
+                }
+            }
+
+            await this.bluetoothRxChar.startNotifications();
+            this.bluetoothRxChar.addEventListener('characteristicvaluechanged', (event) => {
+                const decoder = new TextDecoder();
+                const value = decoder.decode(event.target.value);
+                this.buffer += value;
+                const lines = this.buffer.split('\n');
+                this.buffer = lines.pop() || '';
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed) this._processLine(trimmed);
+                }
+            });
+            console.log(`📡 已订阅通知: ${this.bluetoothRxChar.uuid}`);
+
+            // --- 发送特征 (write/writeWithoutResponse): 使用 bleTxUUID (6E400002) ---
+            try {
+                this.bluetoothTxChar = await service.getCharacteristic(this.bleTxUUID);
+                if (!(this.bluetoothTxChar.properties.writeWithoutResponse || this.bluetoothTxChar.properties.write)) {
+                    throw new Error(`特征 ${this.bleTxUUID} 不支持写入`);
+                }
+                console.log(`✅ 发送(WRITE)特征按 UUID 匹配: ${this.bleTxUUID}`);
+            } catch (e) {
+                console.warn(`⚠️ UUID 匹配发送特征失败: ${e.message}，尝试按属性自动匹配...`);
+                // 优先选 writeWithoutResponse
+                const w = writeCandidates.find(c => c.properties.writeWithoutResponse) || writeCandidates[0];
+                if (w && w.uuid !== this.bluetoothRxChar.uuid) {
+                    this.bluetoothTxChar = w;
+                    console.log(`✅ 自动匹配发送特征: ${this.bluetoothTxChar.uuid}`);
+                } else if (!w) {
+                    console.warn('⚠️ 未找到写入特征，发送功能不可用');
+                }
+            }
+
+            this.isConnected = true;
+            this.connectionType = 'bluetooth';
+            this._calibrated = false;
+            this._validCount = 0;
+            this._calibrationRequired = 3;
+            window.serialCalibrating = true;
+            if (window.setDetectionPanel) {
+                window.setDetectionPanel('<div style="color:#f39c12;">⏳ 校准中，等待有效数据...</div>');
+            }
+            console.log('✅ BLE 已连接:', this.bluetoothDevice.name);
+            return true;
+        } catch (e) {
+            console.error('❌ BLE 连接失败:', e);
+            alert('BLE 连接失败: ' + e.message);
+            return false;
+        }
+    }
+
+    async disconnect() {
+        if (this.connectionType === 'bluetooth') {
+            if (this.bluetoothDevice && this.bluetoothDevice.gatt.connected) {
+                try { await this.bluetoothDevice.gatt.disconnect(); } catch (e) {}
+            }
+            this.bluetoothDevice = null;
+            this.bluetoothServer = null;
+            this.bluetoothTxChar = null;
+            this.bluetoothRxChar = null;
+        } else {
+            if (this.reader) {
+                try { await this.reader.cancel(); } catch (e) {}
+                this.reader = null;
+            }
+            if (this.port) {
+                try { await this.port.close(); } catch (e) {}
+                this.port = null;
+            }
         }
         this.isConnected = false;
-        console.log('🔌 串口已断开');
+        this.connectionType = null;
+        console.log('🔌 已断开');
     }
 
     onData(callback) {
@@ -69,14 +212,28 @@ class SerialFingerController {
     // ---------- 发送数据 ----------
     async send(data) {
         if (!this.isConnected) {
-            console.warn('⚠️ 串口未连接，无法发送');
+            console.warn('⚠️ 未连接，无法发送');
             return false;
         }
         try {
-            const writer = this.port.writable.getWriter();
-            const encoder = new TextEncoder();
-            await writer.write(encoder.encode(data + '\n'));
-            writer.releaseLock();
+            if (this.connectionType === 'bluetooth') {
+                if (!this.bluetoothTxChar) {
+                    console.warn('⚠️ BLE 发送特征不可用');
+                    return false;
+                }
+                const encoder = new TextEncoder();
+                const buf = encoder.encode(data + '\n');
+                if (this.bluetoothTxChar.properties.writeWithoutResponse) {
+                    await this.bluetoothTxChar.writeValueWithoutResponse(buf);
+                } else {
+                    await this.bluetoothTxChar.writeValue(buf);
+                }
+            } else {
+                const writer = this.port.writable.getWriter();
+                const encoder = new TextEncoder();
+                await writer.write(encoder.encode(data + '\n'));
+                writer.releaseLock();
+            }
             console.log(`📤 已发送: ${data}`);
             return true;
         } catch (e) {
@@ -120,17 +277,41 @@ class SerialFingerController {
     }
 
     _processLine(line) {
+        // 跳过纯文本日志/警告行（不影响解析和校准计数）
+        if (/^(Warning|Error|ESP-ROM|BLE |====|初始化|Right Device|请将|倒计时|CH\d|等待|JSON格式|指令格式|准备|弯曲电压|MAC)/.test(line)) return;
+
+        // 校准期间：将原始串口数据输出到检测面板
+        if (!this._calibrated && window.appendDetectionPanel) {
+            const escaped = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            window.appendDetectionPanel(`<div style="color:#aaa;font-size:11px;border-bottom:1px solid #333;padding:2px 0;">📥 ${escaped}</div>`);
+            const panel = window.getDetectionPanel?.();
+            if (panel) panel.scrollTop = panel.scrollHeight;
+        }
+
         // 1) JSON
         if (line.startsWith('{') && line.endsWith('}')) {
             try {
                 const obj = JSON.parse(line);
-                const result = {};
-                let ok = true;
-                for (const key of this.FINGER_KEYS) {
-                    if (typeof obj[key] === 'number') result[key] = obj[key];
-                    else { ok = false; break; }
+
+                // 1a) 双手格式 {"left":{...},"right":{...}}
+                if (obj.left || obj.right) {
+                    if (obj.left) {
+                        const leftResult = this._validateFingerObj(obj.left);
+                        if (leftResult) this._updateFingers(leftResult);
+                    }
+                    if (obj.right) {
+                        const rightResult = this._validateFingerObj(obj.right);
+                        if (rightResult) this._updateRightFingers(rightResult);
+                    }
+                    if (obj.left || obj.right) {
+                        this._onValidLine();
+                        return;
+                    }
                 }
-                if (ok) { this._updateFingers(result); return; }
+
+                // 1b) 单手格式 {"thumb":0.25,...}
+                const result = this._validateFingerObj(obj);
+                if (result) { this._onValidLine(); this._updateFingers(result); return; }
             } catch (e) {}
         }
 
@@ -148,8 +329,7 @@ class SerialFingerController {
                 }
             }
             if (ok && Object.keys(result).length === this.FINGER_KEYS.length) {
-                this._updateFingers(result);
-                return;
+                this._onValidLine(); this._updateFingers(result); return;
             }
         }
 
@@ -160,12 +340,40 @@ class SerialFingerController {
             if (nums.every(n => !isNaN(n))) {
                 const result = {};
                 for (let i = 0; i < this.FINGER_KEYS.length; i++) result[this.FINGER_KEYS[i]] = nums[i];
-                this._updateFingers(result);
-                return;
+                this._onValidLine(); this._updateFingers(result); return;
             }
         }
 
         console.warn('⚠️ 无法解析串口数据:', line);
+        this._validCount = 0;
+    }
+
+    _validateFingerObj(obj) {
+        const result = {};
+        for (const key of this.FINGER_KEYS) {
+            if (typeof obj[key] !== 'number') return null;
+            result[key] = obj[key];
+        }
+        return result;
+    }
+
+    _onValidLine() {
+        if (this._calibrated) return;
+        this._validCount = (this._validCount || 0) + 1;
+        if (this._validCount >= this._calibrationRequired) {
+            this._calibrated = true;
+            window.serialCalibrating = false;
+            if (window.setDetectionPanel) {
+                window.setDetectionPanel('<div style="color:#8f8;font-size:14px;font-weight:bold;">✅ 校准成功</div>');
+                // 2 秒后清除，恢复为 WebSocket 检测结果显示
+                setTimeout(() => {
+                    if (window.setDetectionPanel) {
+                        window.setDetectionPanel('');
+                    }
+                }, 2000);
+            }
+            console.log('✅ 串口校准完成，开始接收手指数据');
+        }
     }
 
     _updateFingers(fingerData) {
@@ -194,6 +402,55 @@ class SerialFingerController {
             .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
 
         if (this.onFingerData) this.onFingerData(mapped);
+    }
+
+    _updateRightFingers(fingerData) {
+        if (!fingerData) return;
+        const mapped = {};
+        for (const key of this.FINGER_KEYS) {
+            const raw = fingerData[key];
+            const maxVal = this.FINGER_MAX[key];
+            if (key === 'wrist') {
+                mapped[key] = Math.min(maxVal, Math.max(-maxVal, raw));
+            } else if (raw >= 0 && raw <= 1) {
+                mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
+            } else {
+                mapped[key] = Math.min(maxVal, Math.max(0, raw));
+            }
+        }
+
+        // 同步右手骨骼
+        const rightHand = window.We?.getObjectByName?.('RightHand');
+        if (rightHand && rightHand.skeleton) {
+            const bones = rightHand.skeleton.bones;
+            if (bones) {
+                const boneMap = {
+                    wrist: [1, 2, 6, 10, 14, 18],
+                    thumb: [3, 4, 5],
+                    index: [7, 8, 9],
+                    middle: [11, 12, 13],
+                    ring: [15, 16, 17],
+                    pinky: [19, 20, 21],
+                };
+                for (const [key, indices] of Object.entries(boneMap)) {
+                    const val = mapped[key] || 0;
+                    for (const idx of indices) {
+                        if (bones[idx]) bones[idx].rotation.x = val;
+                    }
+                }
+            }
+        }
+
+        // 同步右手 Tweakpane 参数
+        if (window.RIGHT_PARAMS) {
+            for (const key of this.FINGER_KEYS) {
+                window.RIGHT_PARAMS[key] = mapped[key];
+            }
+            if (window.Vi) window.Vi.refresh();
+        }
+
+        console.log('🤚 右手手指值:', Object.entries(mapped)
+            .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
     }
 
     _updateBones(fingerData) {
@@ -276,7 +533,7 @@ function createSerialUI() {
     justify-content: center;
   `;
 
-    // 连接按钮
+    // 连接按钮（USB串口）
     const connectBtn = document.createElement('button');
     connectBtn.textContent = '🔌 连接串口';
     connectBtn.style.cssText = `
@@ -295,10 +552,24 @@ function createSerialUI() {
         connectBtn.style.background = connectBtn.dataset.connected === 'true' ? '#4CAF50' : '#6B6AB3';
     };
 
-    // 状态显示
-    const statusEl = document.createElement('span');
-    statusEl.textContent = '⚪ 未连接';
-    statusEl.style.cssText = `color: #aaa; font-size: 12px; min-width: 80px; text-align: center;`;
+    // 蓝牙连接按钮
+    const bluetoothBtn = document.createElement('button');
+    bluetoothBtn.textContent = '📶 连接蓝牙';
+    bluetoothBtn.style.cssText = `
+    padding: 6px 16px;
+    border: 1px solid #3498db;
+    border-radius: 6px;
+    background: #3498db;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    transition: all 0.2s;
+  `;
+    bluetoothBtn.onmouseover = () => bluetoothBtn.style.background = '#5dade2';
+    bluetoothBtn.onmouseout = () => {
+        bluetoothBtn.style.background = bluetoothBtn.dataset.connected === 'true' ? '#4CAF50' : '#3498db';
+    };
 
     // 断开按钮
     const disconnectBtn = document.createElement('button');
@@ -383,25 +654,30 @@ function createSerialUI() {
         await fingerSerial.setSamplingFrequency(freq);
     });
 
-    // 连接事件
+    // 串口连接事件
     connectBtn.addEventListener('click', async () => {
-        if (connectBtn.dataset.connected === 'true') return;
+        if (connectBtn.dataset.connected === 'true' || bluetoothBtn.dataset.connected === 'true') return;
         const baud = parseInt(baudSelect.value);
         const ok = await fingerSerial.connect(baud);
         if (ok) {
             connectBtn.dataset.connected = 'true';
-            connectBtn.textContent = '✅ 已连接';
+            connectBtn.textContent = '✅ 串口已连接';
             connectBtn.style.background = '#4CAF50';
-            statusEl.textContent = '🟢 已连接';
-            statusEl.style.color = '#4CAF50';
+            bluetoothBtn.style.display = 'none';
             disconnectBtn.style.display = 'inline-block';
-        } else {
-            statusEl.textContent = '🔴 连接失败';
-            statusEl.style.color = '#e74c3c';
-            setTimeout(() => {
-                statusEl.textContent = '⚪ 未连接';
-                statusEl.style.color = '#aaa';
-            }, 3000);
+        }
+    });
+
+    // 蓝牙连接事件
+    bluetoothBtn.addEventListener('click', async () => {
+        if (connectBtn.dataset.connected === 'true' || bluetoothBtn.dataset.connected === 'true') return;
+        const ok = await fingerSerial.connectBluetooth();
+        if (ok) {
+            bluetoothBtn.dataset.connected = 'true';
+            bluetoothBtn.textContent = '✅ 蓝牙已连接';
+            bluetoothBtn.style.background = '#4CAF50';
+            connectBtn.style.display = 'none';
+            disconnectBtn.style.display = 'inline-block';
         }
     });
 
@@ -410,12 +686,16 @@ function createSerialUI() {
         connectBtn.dataset.connected = 'false';
         connectBtn.textContent = '🔌 连接串口';
         connectBtn.style.background = '#6B6AB3';
-        statusEl.textContent = '⚪ 已断开';
-        statusEl.style.color = '#aaa';
+        connectBtn.style.display = 'inline-block';
+        bluetoothBtn.dataset.connected = 'false';
+        bluetoothBtn.textContent = '📶 连接蓝牙';
+        bluetoothBtn.style.background = '#3498db';
+        bluetoothBtn.style.display = 'inline-block';
         disconnectBtn.style.display = 'none';
     });
 
     container.appendChild(connectBtn);
+    container.appendChild(bluetoothBtn);
     container.appendChild(disconnectBtn);
     container.appendChild(baudSelect);
 
@@ -427,32 +707,6 @@ function createSerialUI() {
     container.appendChild(freqSelect);
     container.appendChild(freqBtn);
 
-    // 添加分隔线
-    const divider = document.createElement('span');
-    divider.textContent = '|';
-    divider.style.cssText = `color: #555; margin: 0 4px;`;
-    container.appendChild(divider);
-
-    // 添加截图按钮
-    const screenshotBtn = document.createElement('button');
-    screenshotBtn.id = 'screenshot';
-    screenshotBtn.textContent = '📷 保存图片';
-    screenshotBtn.style.cssText = `
-    padding: 6px 16px;
-    border: 1px solid #3498db;
-    border-radius: 6px;
-    background: transparent;
-    color: #3498db;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 13px;
-    transition: all 0.2s;
-  `;
-    screenshotBtn.onmouseover = () => screenshotBtn.style.background = 'rgba(52,152,219,0.2)';
-    screenshotBtn.onmouseout = () => screenshotBtn.style.background = 'transparent';
-    container.appendChild(screenshotBtn);
-
-    container.appendChild(statusEl);
     document.body.appendChild(container);
 }
 
