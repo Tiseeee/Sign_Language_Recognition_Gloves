@@ -1,8 +1,8 @@
 // ============================================================
 // serial.js - 串口通信 + 采样频率控制
 // ============================================================
-function simulateFingerData(t, i, m, r, p) {
-    const data = { thumb: t, index: i, middle: m, ring: r, pinky: p };
+function simulateFingerData(t, i, m, r, p, w = 0) {
+    const data = { thumb: t, index: i, middle: m, ring: r, pinky: p, wrist: w };
     // 直接调用内部处理函数
     fingerSerial._processLine(JSON.stringify(data));
 }
@@ -15,13 +15,14 @@ class SerialFingerController {
         this.buffer = '';
         this.onFingerData = null;
 
-        this.FINGER_KEYS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+        this.FINGER_KEYS = ['thumb', 'index', 'middle', 'ring', 'pinky', 'wrist'];
         this.FINGER_MAX = {
             thumb: 0.9,
             index: 1.1,
             middle: 1.25,
             ring: 1.25,
             pinky: 1.15,
+            wrist: 0.4,
         };
 
         // ---------- 采样频率指令格式（可自定义） ----------
@@ -133,7 +134,7 @@ class SerialFingerController {
             } catch (e) {}
         }
 
-        // 2) 标签格式 "thumb:0.25,index:0.50,..."
+        // 2) 标签格式 "thumb:0.25,index:0.50,wrist:0.15"
         if (line.includes(':')) {
             const parts = line.split(',').map(s => s.trim());
             const result = {};
@@ -152,13 +153,13 @@ class SerialFingerController {
             }
         }
 
-        // 3) 纯 CSV "0.25,0.50,0.80,0.30,0.10"
+        // 3) 纯 CSV "0.25,0.50,0.80,0.30,0.10,0.00"
         const parts = line.split(',').map(s => s.trim());
         if (parts.length >= this.FINGER_KEYS.length) {
-            const nums = parts.slice(0, 5).map(Number);
+            const nums = parts.slice(0, this.FINGER_KEYS.length).map(Number);
             if (nums.every(n => !isNaN(n))) {
                 const result = {};
-                for (let i = 0; i < 5; i++) result[this.FINGER_KEYS[i]] = nums[i];
+                for (let i = 0; i < this.FINGER_KEYS.length; i++) result[this.FINGER_KEYS[i]] = nums[i];
                 this._updateFingers(result);
                 return;
             }
@@ -172,7 +173,9 @@ class SerialFingerController {
         for (const key of this.FINGER_KEYS) {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
-            if (raw >= 0 && raw <= 1) {
+            if (key === 'wrist') {
+                mapped[key] = Math.min(maxVal, Math.max(-maxVal, raw));
+            } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw));
@@ -199,6 +202,7 @@ class SerialFingerController {
             const bones = hand.skeleton.bones;
             if (bones) {
                 const boneMap = {
+                    wrist: [1, 2, 6, 10, 14, 18],
                     thumb: [3, 4, 5],
                     index: [7, 8, 9],
                     middle: [11, 12, 13],
@@ -219,6 +223,7 @@ class SerialFingerController {
             const rightBones = rightHand.skeleton.bones;
             if (rightBones) {
                 const boneMap = {
+                    wrist: [1, 2, 6, 10, 14, 18],
                     thumb: [3, 4, 5],
                     index: [7, 8, 9],
                     middle: [11, 12, 13],

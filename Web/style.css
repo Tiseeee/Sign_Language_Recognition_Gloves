@@ -23,6 +23,20 @@ body {
     outline: none;
 }
 
+#logo {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    width: 6rem;
+    height: 6rem;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: contain;
+    z-index: 10;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 #pane {
     position: absolute;
     left: 0.5rem;
@@ -90,11 +104,32 @@ button:hover {
     pointer-events: auto;
 }
 
-#screenshot {
+#recognition-status {
     position: absolute;
     top: 1rem;
-    right: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 14rem);
+    max-width: 400px;
+    height: 45px;
+    padding: 0 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1rem;
+    background: transparent;
+    color: #fff;
+    z-index: 10;
+    outline: none;
+    transition: border-color 0.2s;
+    text-align: center;
 }
+
+#recognition-status:focus {
+    border-color: #6B6AB3;
+}
+
+
 
 #pane {
     -webkit-user-select: none;
@@ -106,5 +141,12 @@ button:hover {
         font-size: 0.75rem;
         border: 1px solid #333;
         padding: 0.5rem 1rem;
+    }
+
+    #logo {
+        width: 4rem;
+        height: 4rem;
+        max-width: 70px;
+        max-height: 70px;
     }
   }
