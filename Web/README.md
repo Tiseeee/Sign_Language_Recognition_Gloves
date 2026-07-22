@@ -1,39 +1,101 @@
-# Hand Pose Simulator
+# 🖐️ 手部姿态模拟器
 
-Small experiment using Blender's armature/skeleton feature mixed with Three.JS to animate a simple hand.
+基于 Three.js 的 3D 手部骨骼姿态模拟器，支持串口硬件数据输入与 WebSocket 实时检测结果展示。
 
-**[> View the live demo](https://hand-armature.vercel.app/)**
+## ✨ 功能特性
 
+- **3D 手部模型** — 加载 GLB 格式的左手/右手骨骼模型，支持五指独立屈伸控制
+- **串口通信** — 通过 Web Serial API 接收硬件手指数据，实时驱动 3D 手部骨骼动画
+- **校准模式** — 串口连接后自动进入校准，逐行显示设备校准数据，校准完成后自动关闭面板
+- **WebSocket 识别** — 连接 Python 后端服务，实时显示目标检测结果
+- **手动控制面板** — 使用 Tweakpane 独立调节每根手指的弯曲角度、手腕旋转
+- **颜色自定义** — 调节手部、衬衫、背心的颜色
+- **右手镜像** — 左手动作自动同步到右手模型
 
-## Overview
-![hand-examples](https://github.com/Kirilbt/hand-armature/assets/98451613/83b8ebd5-6dcc-4235-b456-37b71b7687ac)
+## 🚀 快速开始
 
+### 环境要求
 
-### Process <a name="process"></a>
+- Node.js >= 16
+- Chrome 或 Edge 浏览器（需支持 Web Serial API）
 
+### 安装运行
 
-#### 3D Modeling
-The hand was created on Blender thanks to **[sens_3d's tutorial on YouTube](https://www.youtube.com/watch?v=ZwsDZNP5m2k&t=2s)**
+```bash
+# 安装依赖
+npm install
 
-#### Modeling
-![process1](https://github.com/Kirilbt/hand-armature/assets/98451613/cce5e9c7-4415-44d0-a4fb-0aaa633594ed)
-![process2](https://github.com/Kirilbt/hand-armature/assets/98451613/643d2f0f-718b-4568-a9d5-d9081738e13d)
+# 启动开发服务器
+npm run dev
 
+# 构建生产版本
+npm run build
 
-#### Adding Skeleton
-![process3](https://github.com/Kirilbt/hand-armature/assets/98451613/4ed0c9f0-b0d6-4760-8f0a-c44093762bf7)
-![process4](https://github.com/Kirilbt/hand-armature/assets/98451613/43094f80-f708-4b8e-881e-c64257eee89d)
+# 预览生产版本
+npm run preview
+```
 
+启动后在浏览器中打开 `http://localhost:5173`。
 
-### Built with <a name="builtwith"></a>
+## 🔌 串口连接
 
-- HTML, CSS, Javascript
-- Three.js
-- GSAP
-- Vite
-- Blender
+1. 点击底部工具栏的 **🔌 连接串口** 按钮
+2. 在弹出窗口中选择对应的串口设备
+3. 连接后自动进入校准模式，面板会显示设备传来的校准数据
+4. 收到有效手指数据后校准完成，面板自动消失
+5. 可通过频率下拉菜单调整采样频率
 
-## Authors
+### 串口数据格式
 
-- [Kiril Bernard Tucker](https://github.com/Kirilbt)
+支持以下三种格式：
 
+| 格式 | 示例 |
+|------|------|
+| JSON | `{"thumb":0.25,"index":0.50,"middle":0.80,"ring":0.30,"pinky":0.10}` |
+| 标签 | `thumb:0.25,index:0.50,middle:0.80,ring:0.30,pinky:0.10` |
+| CSV | `0.25,0.50,0.80,0.30,0.10` |
+
+## 📡 WebSocket 检测
+
+项目默认连接 `ws://localhost:8765`。后端需发送如下 JSON 格式数据：
+
+```json
+{
+  "detections": [
+    {
+      "label": "person",
+      "confidence": 0.95,
+      "bbox": [x1, y1, x2, y2]
+    }
+  ]
+}
+```
+
+检测结果会显示在页面顶部居中位置。
+
+## 🛠️ 技术栈
+
+- [Vite](https://vitejs.dev/) — 构建工具
+- [Three.js](https://threejs.org/) — 3D 渲染引擎
+- [Tweakpane](https://tweakpane.github.io/docs/) — 控制面板
+- [GSAP](https://gsap.com/) — 动画库
+- Web Serial API — 串口通信
+- WebSocket — 实时数据传输
+
+## 📂 项目结构
+
+```
+├── index.html          # 入口 HTML
+├── main.js             # 主逻辑（模型加载、骨骼控制、渲染循环）
+├── serial.js           # 串口通信、数据解析、校准面板
+├── websocket_client.js # WebSocket 客户端、检测结果展示
+├── style.css           # 全局样式
+├── package.json        # 项目配置
+├── hand.glb            # 左手 3D 模型
+├── righthand.glb       # 右手 3D 模型
+└── public/             # 静态资源
+```
+
+## 📄 License
+
+MIT
