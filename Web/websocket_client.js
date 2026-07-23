@@ -1,4 +1,7 @@
 // websocket_client.js
+import { translateLabel } from './labels.js';
+import './voice.js';  // 纯副作用：挂载 window.speakVoice 并创建按钮
+
 export function initWebSocket() {
     const ws = new WebSocket('ws://localhost:8765');
 
@@ -46,7 +49,7 @@ export function initWebSocket() {
                 // 更新面板
                 let html = `<div style="margin-bottom:8px;color:#aaa;font-size:12px;">📡 检测到 ${data.detections.length} 个目标</div>`;
                 data.detections.forEach((d, i) => {
-                    const label = d.label;
+                    const label = translateLabel(d.label);
                     const conf = d.confidence;
                     const bbox = d.bbox.join(', ');
                     html += `<div style="margin:4px 0;border-bottom:1px solid #444;padding-bottom:4px;">
@@ -56,6 +59,16 @@ export function initWebSocket() {
                     </div>`;
                 });
                 panel.innerHTML = html;
+
+                // 语音播报置信度最高的目标
+                if (data.detections.length > 0) {
+                    const best = data.detections.reduce((a, b) =>
+                        a.confidence > b.confidence ? a : b
+                    );
+                    if (window.speakVoice) {
+                        window.speakVoice(translateLabel(best.label), best.confidence);
+                    }
+                }
             }
         } catch (e) {
             console.warn('解析 JSON 失败:', e);
