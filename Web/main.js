@@ -553,7 +553,7 @@ window.addEventListener('resize', () =>
 
   // Update renderer
   outlineEffect.setSize(sizes.width, sizes.height)
-  outlineEffect.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  outlineEffect.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
 })
 
 /**
@@ -577,11 +577,12 @@ controls.maxDistance = 10
 const renderer = new THREE.WebGLRenderer({
   canvas: canvas,
   alpha: true,
+  antialias: false,
+  powerPreference: 'high-performance'
 })
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.enabled = false
 renderer.setSize(sizes.width, sizes.height)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
 
 const outlineEffect = new OutlineEffect(renderer, {
   defaultThickness: 0.0035,
@@ -615,11 +616,11 @@ const tick = () =>
 tick()
 
 // 将关键对象暴露到全局，供串口脚本使用
-// 将关键对象暴露到全局，供串口脚本使用
-window.Re = PARAMS;          // 存储手指数据，用于更新面板显示
+window.Re = PARAMS;          // 左手手指数据，用于更新面板显示
 window.We = scene;           // Three.js 场景，用于查找骨骼
 window.Vi = pane;            // Tweakpane 实例，用于刷新 UI
-window.PARAMS = PARAMS;      // 可选，已存在
+window.PARAMS = PARAMS;      // 左手参数
+window.RIGHT_PARAMS = RIGHT_PARAMS;  // 右手参数，供串口脚本独立控制
 console.log('目标暴露成功，可使用串口修改');
 
 if (document.readyState === 'loading') {
