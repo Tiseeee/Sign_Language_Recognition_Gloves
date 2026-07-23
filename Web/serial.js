@@ -77,7 +77,14 @@ class SerialFingerController {
     //   fingerSerial.bleRxUUID = '你的RX特征UUID';
     async connectBluetooth() {
         if (!('bluetooth' in navigator)) {
-            alert('❌ 当前浏览器不支持 Web Bluetooth API，请使用 Chrome 或 Edge。');
+            alert('❌ 当前浏览器不支持 Web Bluetooth API。\n\n' +
+                '🔧 解决方案：\n' +
+                '1. 确保使用 Chrome/Edge 浏览器\n' +
+                '2. Linux 用户请在地址栏输入：\n' +
+                '   chrome://flags/#enable-experimental-web-platform-features\n' +
+                '   设为 Enabled 后重启浏览器\n' +
+                '3. 或者用命令行启动：\n' +
+                '   google-chrome --enable-features=WebBluetooth');
             return false;
         }
         try {
