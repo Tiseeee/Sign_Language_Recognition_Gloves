@@ -2,41 +2,31 @@
 // serial.js - 串口通信 + 采样频率控制
 // ============================================================
 //
-// ==================== 数据输入合法格式 ====================
-// 本模块支持以下 4 种串口/BLE 数据格式（每行一条，以 \n 分隔）：
+// ==================== 支持的合法数据格式 ====================
+// 共支持 5 种数据格式，键名固定为 thumb/index/middle/ring/pinky/wrist
 //
-// 1) JSON 单手格式（Arduino 默认输出格式，推荐 ★）
-//    {"thumb":0.250,"index":0.500,"middle":0.800,"ring":0.300,"pinky":0.100,"wrist":0.150}
-//    字段说明：
-//      thumb  - 大拇指弯曲度  0.000~1.000
-//      index  - 食指弯曲度    0.000~1.000
-//      middle - 中指弯曲度    0.000~1.000
-//      ring   - 无名指弯曲度  0.000~1.000
-//      pinky  - 小拇指弯曲度  0.000~1.000
-//      wrist  - 手腕角度      -0.400~0.400（由MPU6050 pitch角映射）
-//    必须包含全部 6 个字段，值必须是数字。
+// 【格式1】单手JSON（左手）
+//   {"thumb":0.25,"index":0.50,"middle":0.80,"ring":0.30,"pinky":0.10,"wrist":0.00}
+//   说明: 必须是完整 JSON 对象，以 { 开头、} 结尾，6 个键的值均为数字。
 //
-// 2) JSON 双手格式（左右手同时传输，⚠️ 仅 JSON 支持双手）
-//    {"left":{"thumb":0.25,...},"right":{"thumb":0.50,...}}
-//    left/right 子对象各自包含全部 6 个字段，均可选。
-//    标签格式和 CSV 格式仅支持单手，数据默认映射到左手。
+// 【格式2】双手JSON
+//   {"left":{"thumb":0.25,...},"right":{"thumb":0.30,...}}
+//   说明: 最外层 JSON 包含 "left" 和/或 "right" 子对象，各子对象格式同【格式1】。
+//         left/right 可只传其中一个，也可同时传两个。
 //
-// 3) 标签格式（key:value 逗号分隔，⚠️ 仅支持单手）
-//    thumb:0.25,index:0.50,middle:0.80,ring:0.30,pinky:0.10,wrist:0.15
-//    必须按顺序包含全部 6 个字段，数据默认映射到左手。
+// 【格式3】标签格式（左手）
+//   thumb:0.25,index:0.50,middle:0.80,ring:0.30,pinky:0.10,wrist:0.00
+//   说明: 包含冒号 : 分隔键值对，逗号分隔各手指，必须恰好 6 个键。
 //
-// 4) 纯 CSV 格式（按固定顺序排列的数字）
-//    单手（6 个值）：0.25,0.50,0.80,0.30,0.10,0.00
-//    双手（12 个值）：前 6 个=左手，后 6 个=右手
-//      左手_thumb,左手_index,...,左手_wrist, 右手_thumb,右手_index,...,右手_wrist
-//    顺序：thumb, index, middle, ring, pinky, wrist（不可调换）
+// 【格式4】纯CSV（左手）
+//   0.25,0.50,0.80,0.30,0.10,0.00
+//   说明: 6 个逗号分隔的数值，按顺序对应 thumb,index,middle,ring,pinky,wrist。
+//         要求不含 { 或 : 字符（以避免与 JSON/标签格式混淆）。
 //
-// 下行指令格式（向设备发送）：
-//   FREQ:<频率>  如 "FREQ:20" 设置采样频率为 20 Hz（范围 1~100）
-//
-// 自动忽略的行（不会被解析为数据）：
-//   以 Warning/Error/ESP-ROM/BLE/====/初始化/Right Device/请将/倒计时
-//   /CH\d/等待/JSON格式/指令格式/准备/弯曲电压/MAC 开头的文本日志行
+// 【格式5】双手CSV
+//   0.25,0.50,0.80,0.30,0.10,0.00, 0.30,0.55,0.85,0.35,0.15,0.05
+//   说明: 12 个逗号分隔的数值，前 6 个为左手，后 6 个为右手，
+//         各 6 个按顺序对应 thumb,index,middle,ring,pinky,wrist。
 // ============================================================
 function simulateFingerData(t, i, m, r, p, w = 0) {
     const data = { thumb: t, index: i, middle: m, ring: r, pinky: p, wrist: w };
@@ -377,31 +367,31 @@ class SerialFingerController {
             }
         }
 
-        // 3) 纯 CSV
-        //    6 值 = 单手, 12 值 = 双手（前 6 左手 + 后 6 右手）
+        // 3) 双手 CSV "0.25,...,0.30,..." (12个值: 左手6个 + 右手6个)
         const parts = line.split(',').map(s => s.trim());
-        const keyCount = this.FINGER_KEYS.length; // 6
-        if (parts.length === keyCount * 2) {
-            // 双手 CSV：12 个值
-            const nums = parts.map(Number);
-            if (nums.every(n => !isNaN(n))) {
+        if (parts.length >= this.FINGER_KEYS.length * 2) {
+            const leftNums = parts.slice(0, this.FINGER_KEYS.length).map(Number);
+            const rightNums = parts.slice(this.FINGER_KEYS.length, this.FINGER_KEYS.length * 2).map(Number);
+            if (leftNums.every(n => !isNaN(n)) && rightNums.every(n => !isNaN(n))) {
                 const leftResult = {};
                 const rightResult = {};
-                for (let i = 0; i < keyCount; i++) {
-                    leftResult[this.FINGER_KEYS[i]] = nums[i];
-                    rightResult[this.FINGER_KEYS[i]] = nums[i + keyCount];
+                for (let i = 0; i < this.FINGER_KEYS.length; i++) {
+                    leftResult[this.FINGER_KEYS[i]] = leftNums[i];
+                    rightResult[this.FINGER_KEYS[i]] = rightNums[i];
                 }
                 this._onValidLine();
                 this._updateFingers(leftResult);
                 this._updateRightFingers(rightResult);
                 return;
             }
-        } else if (parts.length >= keyCount) {
-            // 单手 CSV：6 个值
-            const nums = parts.slice(0, keyCount).map(Number);
+        }
+
+        // 4) 纯 CSV "0.25,0.50,0.80,0.30,0.10,0.00" (6个值: 左手)
+        if (parts.length >= this.FINGER_KEYS.length) {
+            const nums = parts.slice(0, this.FINGER_KEYS.length).map(Number);
             if (nums.every(n => !isNaN(n))) {
                 const result = {};
-                for (let i = 0; i < keyCount; i++) result[this.FINGER_KEYS[i]] = nums[i];
+                for (let i = 0; i < this.FINGER_KEYS.length; i++) result[this.FINGER_KEYS[i]] = nums[i];
                 this._onValidLine(); this._updateFingers(result); return;
             }
         }
@@ -537,7 +527,30 @@ class SerialFingerController {
             }
         }
 
+        const rightHand = window.We?.getObjectByName?.('RightHand');
+        if (rightHand && rightHand.skeleton) {
+            const rightBones = rightHand.skeleton.bones;
+            if (rightBones) {
+                const boneMap = {
+                    wrist: [1, 2, 6, 10, 14, 18],
+                    thumb: [3, 4, 5],
+                    index: [7, 8, 9],
+                    middle: [11, 12, 13],
+                    ring: [15, 16, 17],
+                    pinky: [19, 20, 21],
+                };
+                for (const [key, indices] of Object.entries(boneMap)) {
+                    const val = fingerData[key] || 0;
+                    for (const idx of indices) {
+                        if (rightBones[idx]) rightBones[idx].rotation.x = val;
+                    }
+                }
+            }
+        }
 
+        if (window.rightHandController) {
+            window.rightHandController.syncWithLeft();
+        }
     }
 }
 
