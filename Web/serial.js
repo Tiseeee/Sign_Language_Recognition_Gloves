@@ -526,31 +526,6 @@ class SerialFingerController {
                 }
             }
         }
-
-        const rightHand = window.We?.getObjectByName?.('RightHand');
-        if (rightHand && rightHand.skeleton) {
-            const rightBones = rightHand.skeleton.bones;
-            if (rightBones) {
-                const boneMap = {
-                    wrist: [1, 2, 6, 10, 14, 18],
-                    thumb: [3, 4, 5],
-                    index: [7, 8, 9],
-                    middle: [11, 12, 13],
-                    ring: [15, 16, 17],
-                    pinky: [19, 20, 21],
-                };
-                for (const [key, indices] of Object.entries(boneMap)) {
-                    const val = fingerData[key] || 0;
-                    for (const idx of indices) {
-                        if (rightBones[idx]) rightBones[idx].rotation.x = val;
-                    }
-                }
-            }
-        }
-
-        if (window.rightHandController) {
-            window.rightHandController.syncWithLeft();
-        }
     }
 }
 
