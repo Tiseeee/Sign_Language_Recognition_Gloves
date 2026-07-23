@@ -367,7 +367,7 @@ class SerialFingerController {
             }
         }
 
-        // 3) 双手 CSV "0.25,...,0.30,..." (12个值: 左手6个 + 右手6个)
+        // 3) 双手 CSV "25,50,80,...或0.25,0.50,0.80,..." (12个值: 左手6个 + 右手6个)
         const parts = line.split(',').map(s => s.trim());
         if (parts.length >= this.FINGER_KEYS.length * 2) {
             const leftNums = parts.slice(0, this.FINGER_KEYS.length).map(Number);
@@ -376,8 +376,9 @@ class SerialFingerController {
                 const leftResult = {};
                 const rightResult = {};
                 for (let i = 0; i < this.FINGER_KEYS.length; i++) {
-                    leftResult[this.FINGER_KEYS[i]] = leftNums[i];
-                    rightResult[this.FINGER_KEYS[i]] = rightNums[i];
+                    // 整数编码兼容：值>1时为整数编码（0-100），除以100还原
+                    leftResult[this.FINGER_KEYS[i]] = leftNums[i] > 1 ? leftNums[i] / 100 : leftNums[i];
+                    rightResult[this.FINGER_KEYS[i]] = rightNums[i] > 1 ? rightNums[i] / 100 : rightNums[i];
                 }
                 this._onValidLine();
                 this._updateFingers(leftResult);
@@ -386,12 +387,14 @@ class SerialFingerController {
             }
         }
 
-        // 4) 纯 CSV "0.25,0.50,0.80,0.30,0.10,0.00" (6个值: 左手)
+        // 4) 纯 CSV "25,50,80,30,10,0 或 0.25,0.50,..." (6个值: 左手)
         if (parts.length >= this.FINGER_KEYS.length) {
             const nums = parts.slice(0, this.FINGER_KEYS.length).map(Number);
             if (nums.every(n => !isNaN(n))) {
                 const result = {};
-                for (let i = 0; i < this.FINGER_KEYS.length; i++) result[this.FINGER_KEYS[i]] = nums[i];
+                for (let i = 0; i < this.FINGER_KEYS.length; i++) {
+                    result[this.FINGER_KEYS[i]] = nums[i] > 1 ? nums[i] / 100 : nums[i];
+                }
                 this._onValidLine(); this._updateFingers(result); return;
             }
         }
@@ -446,12 +449,22 @@ class SerialFingerController {
             for (const key of this.FINGER_KEYS) {
                 window.Re[key] = mapped[key];
             }
-            if (window.Vi) window.Vi.refresh();
+            // 节流UI刷新：每10帧刷新一次，避免DOM操作阻塞动画
+            this._uiRefreshCount = (this._uiRefreshCount || 0) + 1;
+            if (this._uiRefreshCount >= 10 && window.Vi) {
+                this._uiRefreshCount = 0;
+                window.Vi.refresh();
+            }
             this._updateBones(mapped);
         }
 
-        console.log('🖐️ 手指值:', Object.entries(mapped)
-            .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
+        // 节流日志：每10帧输出一次
+        this._logCount = (this._logCount || 0) + 1;
+        if (this._logCount >= 10) {
+            this._logCount = 0;
+            console.log('🖐️ 手指值:', Object.entries(mapped)
+                .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
+        }
 
         if (this.onFingerData) this.onFingerData(mapped);
     }
@@ -493,19 +506,25 @@ class SerialFingerController {
             }
         }
 
-        // 同步右手 Tweakpane 参数
+        // 同步右手 Tweakpane 参数（复用左手的节流计数器）
         if (window.RIGHT_PARAMS) {
             for (const key of this.FINGER_KEYS) {
                 window.RIGHT_PARAMS[key] = mapped[key];
             }
-            if (window.Vi) window.Vi.refresh();
+            // UI刷新已在 _updateFingers 中节流处理，此处不再重复调用
         }
 
-        console.log('🤚 右手手指值:', Object.entries(mapped)
-            .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
+        // 节流日志：每10帧输出一次
+        this._rightLogCount = (this._rightLogCount || 0) + 1;
+        if (this._rightLogCount >= 10) {
+            this._rightLogCount = 0;
+            console.log('🤚 右手手指值:', Object.entries(mapped)
+                .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
+        }
     }
 
     _updateBones(fingerData) {
+        // 只更新左手骨骼，右手由 _updateRightFingers 独立控制
         const hand = window.We?.getObjectByName?.('Hand');
         if (hand && hand.skeleton) {
             const bones = hand.skeleton.bones;
