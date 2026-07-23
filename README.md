@@ -35,8 +35,10 @@ Sign_Language_Recognition_Gloves/
 ├── Web/                          # 🌐 前端 3D 可视化 + 通信层
 │   ├── index.html                #    入口页面
 │   ├── main.js                   #    Three.js 场景、模型加载、骨骼动画驱动
-│   ├── serial.js                 #    Web Serial / Web Bluetooth 通信与数据解析
+│   ├── serial.js                 #    Web Serial / Web Bluetooth 通信与 5 种格式数据解析
 │   ├── websocket_client.js       #    WebSocket 识别结果展示
+│   ├── voice.js                  #    语音播报模块（Web Speech API）
+│   ├── labels.js                 #    标签映射表（英文 → 中文转译）
 │   ├── style.css                 #    全局 UI 样式
 │   ├── package.json              #    Vite + Three.js + GSAP + Tweakpane
 │   ├── temp_patch.txt            #    临时补丁记录
@@ -233,33 +235,19 @@ hands_see.exe     # Windows
 
 ## 🔌 通信协议
 
-### 数据格式
+### 串口 / BLE 数据格式（共 5 种）
 
-右手设备通过 BLE 或 USB 串口以 **换行分隔的 JSON** 格式发送数据：
+右手设备通过 BLE 或 USB 串口以 **换行分隔** 发送数据，前端 `serial.js` 自动识别并解析以下任一格式：
 
-```json
-{
-  "left": {
-    "thumb": 0.25,
-    "index": 0.50,
-    "middle": 0.80,
-    "ring": 0.30,
-    "pinky": 0.10,
-    "wrist": 0.15
-  },
-  "right": {
-    "thumb": 0.30,
-    "index": 0.45,
-    "middle": 0.75,
-    "ring": 0.35,
-    "pinky": 0.20,
-    "wrist": -0.10
-  }
-}
-```
+| 格式 | 示例 | 说明 |
+|------|------|------|
+| **单手 JSON** | `{"thumb":0.25,"index":0.50,"middle":0.80,"ring":0.30,"pinky":0.10,"wrist":0.00}` | 左手数据，完整 JSON 对象 |
+| **双手 JSON** | `{"left":{"thumb":0.25,...},"right":{"thumb":0.30,...}}` | 左右手独立子对象，可只传一侧 |
+| **标签格式** | `thumb:0.25,index:0.50,middle:0.80,ring:0.30,pinky:0.10,wrist:0.00` | 键值对逗号分隔，左手 |
+| **单手 CSV** | `0.25,0.50,0.80,0.30,0.10,0.00` | 6 个数值，左手 |
+| **双手 CSV** | `0.25,0.50,0.80,0.30,0.10,0.00,0.30,0.55,0.85,0.35,0.15,0.05` | 12 个数值，前 6 左手后 6 右手 |
 
-> 前端同时兼容仅右手数据的简化 JSON 格式：  
-> `{"thumb":0.25,"index":0.50,"middle":0.80,"ring":0.30,"pinky":0.10}`
+> 键名固定：`thumb` `index` `middle` `ring` `pinky` `wrist`。详见 `Web/serial.js` 文件头部注释。
 
 ### 控制指令
 
@@ -290,8 +278,10 @@ hands_see.exe     # Windows
 | 🔌 **双模连接** | Web Serial API (USB 有线) + Web Bluetooth API (BLE 无线) |
 | 📐 **自动校准** | 连接后自动采集基准值，校准完成后面板自动关闭 |
 | 📡 **实时识别** | WebSocket 连接 Python 后端，显示手语检测结果与置信度 |
-| 🎛️ **手动面板** | Tweakpane 独立调节每根手指角度、手腕旋转量 |
+| 🎛️ **手动面板** | Tweakpane 独立调节每根手指角度、手腕旋转量、握拳预设 |
 | 🪞 **镜像同步** | 左手动作自动映射到右手模型 (可独立开关) |
+| 🔊 **语音播报** | 检测结果自动语音朗读，右下角按钮开关 |
+| 🏷️ **标签转译** | 英文检测标签自动映射为中文显示 |
 | 🎨 **颜色自定义** | 手部肤色、衣物颜色实时可调 |
 | ⚡ **可变采样率** | 10 / 20 / 50 / 100 Hz 四档切换 |
 
@@ -356,7 +346,10 @@ flowchart LR
 - [x] BLE Nordic UART 透传
 - [x] 3D 手部 GLB 模型加载与骨骼驱动
 - [x] Web Serial / Web Bluetooth 双模通信
+- [x] 5 种串口数据格式自动识别（JSON / 标签 / CSV / 双手 CSV）
 - [x] 自动校准流程
+- [x] 语音播报模块（Web Speech API）
+- [x] 标签中英文映射表
 - [x] C++ 手势数据结构与向量归一化
 - [x] Tweakpane 调试面板
 - [x] WebSocket 识别结果展示
