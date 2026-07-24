@@ -356,7 +356,7 @@ def main():
     import time as _time
 
     parser = argparse.ArgumentParser(description="手势识别一体化服务")
-    parser.add_argument("--http-port", type=int, default=8080, help="HTTP 网页端口 (默认 8080)")
+    parser.add_argument("--http-port", type=int, default=8088, help="HTTP 网页端口 (默认 8088)")
     parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket 端口 (默认 8765)")
     parser.add_argument("--host", default="0.0.0.0", help="监听地址")
     parser.add_argument("--model", default="checkpoint.pth", help="模型权重文件")

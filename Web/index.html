@@ -16,7 +16,20 @@
   <meta name="twitter:creator" content="@kirilbt"/>
   <title>手部姿态模拟器</title>
 
-  <!-- 不再需要手动 link style.css，改用 JS import -->
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- Import Map: 让裸模块导入在不经过 Vite 打包时也能正确解析 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/",
+      "three/examples/jsm/": "https://unpkg.com/three@0.152.2/examples/jsm/",
+      "gsap": "https://unpkg.com/gsap@3.11.5/index.js",
+      "tweakpane": "https://esm.sh/tweakpane@3.1.9"
+    }
+  }
+  </script>
 </head>
 <body>
 <canvas class="webgl"></canvas>
