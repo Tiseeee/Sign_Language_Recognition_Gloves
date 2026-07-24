@@ -437,7 +437,8 @@ class SerialFingerController {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
             if (key === 'wrist') {
-                mapped[key] = Math.min(maxVal, Math.max(-maxVal, raw));
+                // [已冻结] 手腕固定为0，禁止手腕运动
+                mapped[key] = 0;
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
@@ -476,7 +477,8 @@ class SerialFingerController {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
             if (key === 'wrist') {
-                mapped[key] = Math.min(maxVal, Math.max(-maxVal, raw));
+                // [已冻结] 手腕固定为0，禁止手腕运动
+                mapped[key] = 0;
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
