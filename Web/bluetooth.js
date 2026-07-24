@@ -38,6 +38,18 @@ class BluetoothFingerController {
             wrist: 0.4,
         };
 
+        // ---------- 数据滤波配置 ----------
+        this.MEDIAN_WINDOW_SIZE = 5;  // 中值滤波窗口大小
+        this.OUTLIER_THRESHOLD = 0.3; // 异常值检测阈值（变化超过30%）
+
+        // 存储历史数据用于中值滤波
+        this._leftHistory = {};
+        this._rightHistory = {};
+        for (const key of this.FINGER_KEYS) {
+            this._leftHistory[key] = [];
+            this._rightHistory[key] = [];
+        }
+
         this.frequencyCommandFormat = (freq) => `FREQ:${freq}`;
     }
 
@@ -264,7 +276,7 @@ class BluetoothFingerController {
     }
 
     _processLine(line) {
-        // 快速路径：最常用的双手CSV格式优先匹配（12个整数值）
+        // 快速路径：最常用的双手CSV格式优先匹配（12个值）
         const firstChar = line.charCodeAt(0);
         if (firstChar >= 48 && firstChar <= 57 || firstChar === 45) {
             const commaCount = (line.match(/,/g) || []).length;
@@ -273,26 +285,26 @@ class BluetoothFingerController {
                 const nums = new Array(12);
                 let allValid = true;
                 for (let i = 0; i < 12; i++) {
-                    const n = parseInt(parts[i], 10);
+                    const n = parseFloat(parts[i]);
                     if (isNaN(n)) { allValid = false; break; }
                     nums[i] = n;
                 }
                 if (allValid) {
                     const leftResult = {
-                        thumb: nums[0] / 100,
-                        index: nums[1] / 100,
-                        middle: nums[2] / 100,
-                        ring: nums[3] / 100,
-                        pinky: nums[4] / 100,
-                        wrist: nums[5] / 100
+                        thumb: nums[0] > 1 ? nums[0] / 100 : nums[0],
+                        index: nums[1] > 1 ? nums[1] / 100 : nums[1],
+                        middle: nums[2] > 1 ? nums[2] / 100 : nums[2],
+                        ring: nums[3] > 1 ? nums[3] / 100 : nums[3],
+                        pinky: nums[4] > 1 ? nums[4] / 100 : nums[4],
+                        wrist: nums[5] > 1 ? nums[5] / 100 : nums[5]
                     };
                     const rightResult = {
-                        thumb: nums[6] / 100,
-                        index: nums[7] / 100,
-                        middle: nums[8] / 100,
-                        ring: nums[9] / 100,
-                        pinky: nums[10] / 100,
-                        wrist: nums[11] / 100
+                        thumb: nums[6] > 1 ? nums[6] / 100 : nums[6],
+                        index: nums[7] > 1 ? nums[7] / 100 : nums[7],
+                        middle: nums[8] > 1 ? nums[8] / 100 : nums[8],
+                        ring: nums[9] > 1 ? nums[9] / 100 : nums[9],
+                        pinky: nums[10] > 1 ? nums[10] / 100 : nums[10],
+                        wrist: nums[11] > 1 ? nums[11] / 100 : nums[11]
                     };
                     this._updateFingers(leftResult);
                     this._updateRightFingers(rightResult);
@@ -408,12 +420,15 @@ class BluetoothFingerController {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
             if (key === 'wrist') {
-                // [已冻结] 手腕固定为0，禁止手腕运动
                 mapped[key] = 0;
+            } else if (typeof raw !== 'number' || isNaN(raw)) {
+                mapped[key] = 0;
+            } else if (raw > 1) {
+                mapped[key] = Math.min(maxVal, Math.max(0, (raw / 100.0) * maxVal));
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
-                mapped[key] = Math.min(maxVal, Math.max(0, raw));
+                mapped[key] = 0;
             }
         }
         return mapped;

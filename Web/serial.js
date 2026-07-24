@@ -437,12 +437,15 @@ class SerialFingerController {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
             if (key === 'wrist') {
-                // [已冻结] 手腕固定为0，禁止手腕运动
                 mapped[key] = 0;
+            } else if (typeof raw !== 'number' || isNaN(raw)) {
+                mapped[key] = 0;
+            } else if (raw > 1) {
+                mapped[key] = Math.min(maxVal, Math.max(0, (raw / 100.0) * maxVal));
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
-                mapped[key] = Math.min(maxVal, Math.max(0, raw));
+                mapped[key] = 0;
             }
         }
 
@@ -477,12 +480,15 @@ class SerialFingerController {
             const raw = fingerData[key];
             const maxVal = this.FINGER_MAX[key];
             if (key === 'wrist') {
-                // [已冻结] 手腕固定为0，禁止手腕运动
                 mapped[key] = 0;
+            } else if (typeof raw !== 'number' || isNaN(raw)) {
+                mapped[key] = 0;
+            } else if (raw > 1) {
+                mapped[key] = Math.min(maxVal, Math.max(0, (raw / 100.0) * maxVal));
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
-                mapped[key] = Math.min(maxVal, Math.max(0, raw));
+                mapped[key] = 0;
             }
         }
 
