@@ -1,150 +1,125 @@
-# 1D-CNN 双手手势识别
+﻿# 🧠 1D-CNN 双手手势识别
 
-基于一维卷积神经网络的双手手势分类系统，支持：
-
-- 🎲 **生成模拟数据** — 快速验证模型
-- 📡 **ESP32 实时采集** — 蓝牙 BLE / 串口 Serial 双模式
-- 🏷️ **一键打标签** — 自动输出可训练格式
-- 📊 **可视化分析** — 手指值对比 / 热力图 / 箱线图 / 雷达图
-- 🚀 **训练 + 导出** — PyTorch 训练 → TFLite → ESP32 部署
-- 🗂️ **标签集中管理** — 修改 `labels.py` 一处，全局生效
+基于一维卷积神经网络的双手手势分类系统，覆盖 **数据生成 → 真机采集 → 训练 → 可视化 → 推理部署** 全流程。
 
 ---
 
-## 项目结构
+## ✨ 功能概览
 
-```
-1dcnn/
-├── labels.py           ★ 标签词典 (修改标签只需改这一个文件)
-├── cnn.py              模型定义 (HandGestureCNN1D)
-├── train.py            训练脚本
-├── data_loader.py      数据加载器 (JSON / CSV)
-├── generate_data.py    模拟数据生成
-├── collect_data.py     数据采集 (蓝牙 / 串口 + 监视器 + 合并)
-├── visualization.py    数据可视化 (5种图表)
-├── export_for_esp32.py PyTorch → TFLite 模型转换 & ESP32 部署
-├── data/               数据文件目录
-└── README.md
-```
+| 模块 | 文件 | 作用 |
+|------|------|------|
+| 🏷️ **标签管理** | `labels.py` | ★ 统一定义手势名称、模板、传感器范围、归一化函数 |
+| 🎲 **模拟数据** | `generate_data.py` | 基于标签模板自动生成带噪声的训练数据 |
+| 📡 **真机采集** | `collect_data.py` | ESP32 蓝牙 BLE / 串口 Serial 双模式实时采集 |
+| 🧠 **模型训练** | `train.py` + `cnn.py` | 1D-CNN 训练 + 评估 + 保存最佳模型 |
+| 📊 **数据可视化** | `visualization.py` | 柱状图/手指对比/热力图/箱线图/雷达图 |
+| 🔌 **推理服务** | `app.py` + `server.py` | WebSocket 实时推理 + HTTP 网页托管 |
+| 📦 **模型导出** | `export_for_esp32.py` | PyTorch → ONNX → TFLite + ESP32 C++ 代码 |
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
-### 1. 环境
+### 环境
 
 ```bash
 conda activate 1dcnn
-python -c "import torch; print(torch.__version__)"
+
+# 安装依赖
+pip install torch numpy websockets matplotlib pyserial bleak
+# 或
+pip install -r requirements_server.txt
 ```
 
-Python 环境路径: `D:\anaconda\envs\1dcnn\python.exe`
-
-### 2. 生成模拟数据
+### 一键体验
 
 ```bash
-D:\anaconda\envs\1dcnn\python.exe generate_data.py --samples 200
-```
+# 1. 生成模拟数据
+python generate_data.py --samples 200 --noise 0.12
 
-输出 `data/train.json` + `data/train.csv`，各 1000 条 (5 类 × 200)。
+# 2. 训练
+python train.py --train data/train.csv --test_ratio 0.2 --epochs 80 --batch_size 64
 
-### 3. 训练
+# 3. 启动一体化服务（自动打开浏览器）
+python app.py --num-classes 3
 
-```bash
-D:\anaconda\envs\1dcnn\python.exe train.py --train data/train.csv --test_ratio 0.2 --epochs 60
+# 访问 http://localhost:8088 即可看到 3D 手部模型
 ```
 
 ---
 
-## 数据格式
-
-输入为 **12 维特征向量**，双手各 6 指弯曲程度（0.0 = 弯，1.0 = 直）：
+## 📁 项目结构
 
 ```
-左手: thumb, index, middle, ring, pinky, wrist
-右手: thumb, index, middle, ring, pinky, wrist
-```
-
-**JSON**
-```json
-[{
-  "left":  {"thumb": 0.25, "index": 0.50, "middle": 0.80, "ring": 0.30, "pinky": 0.10, "wrist": 0.00},
-  "right": {"thumb": 0.30, "index": 0.55, "middle": 0.85, "ring": 0.35, "pinky": 0.15, "wrist": 0.05},
-  "label": 0
-}]
-```
-
-**CSV**
-```csv
-0.25,0.50,0.80,0.30,0.10,0.00,0.30,0.55,0.85,0.35,0.15,0.05,0
+1dcnn/
+├── labels.py               ★ 标签词典（改一处全局生效）
+├── cnn.py                  模型定义 HandGestureCNN1D
+├── train.py                训练脚本
+├── data_loader.py          数据加载器（JSON/CSV）
+├── generate_data.py        模拟数据生成
+├── collect_data.py         真机数据采集（BLE/Serial）
+├── visualization.py        数据可视化（5种图表）
+├── app.py                  ★ 一体化服务（HTTP + WebSocket）
+├── server.py               独立 WebSocket 推理服务
+├── export_for_esp32.py     PyTorch → TFLite
+├── checkpoint.pth          训练好的模型
+├── requirements_server.txt 服务端依赖
+└── data/                   数据集目录
 ```
 
 ---
 
-## 手势标签
+## 🏷️ 标签管理 — `labels.py`
 
-默认定义 5 类手势，在 `labels.py` 中统一维护：
+**所有手势相关的定义集中在此文件，添加新手势只需改这一处：**
 
-| label | 英文名 | 中文名 | 伸直的手指 |
-|:-----:|--------|--------|-----------|
-| 0 | open | 张开手掌 | 五指全伸 |
-| 1 | fist | 握拳 | 五指全弯 |
-| 2 | point | 食指指 | 仅食指 |
-| 3 | thumb_up | 点赞 | 仅拇指 |
-| 4 | peace | 胜利V | 食指 + 中指 |
+### 当前手势（3 类）
+
+| label | 英文 | 中文 | 右手手指状态 |
+|:-----:|------|:--:|-------------|
+| 0 | you | 你 | 仅食指伸直 |
+| 1 | good | 好 | 拇指弯曲，其余四指伸直 |
+| 2 | meet | 见面 | 拇指+无名指+小指伸直 |
+
+### 添加新手势
+
+```python
+# 1. 添加名称映射
+GESTURE_NAMES_EN[3] = "hello"
+GESTURE_NAMES_CN[3] = "你好"
+
+# 2. 添加手指模板（值为传感器原始范围，非归一化值）
+GESTURE_TEMPLATES[3] = {
+    "left":  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "right": [0.9, 1.1, 1.25, 1.25, 1.15, 0.0],  # 五指全伸
+}
+# 完成！generate_data.py / train.py / app.py 自动识别新手势
+```
+
+### 传感器归一化
+
+`labels.py` 还定义了每根手指的物理范围及归一化函数：
+
+```python
+FINGER_MAX = {"thumb":0.90, "index":1.10, "middle":1.25, "ring":1.25, "pinky":1.15, "wrist":0.40}
+FINGER_MIN = {"thumb":0.0, ..., "wrist":-0.40}
+
+normalize_finger("index", 0.55)  # → 0.5（映射到 [0,1]）
+normalize_features([raw_12_values])  # → [0~1] × 12
+```
 
 ---
 
-## 模型架构
+## 🎲 模拟数据生成 — `generate_data.py`
 
-```
-输入: (batch, 1, 12)
-       ↓
-Conv1d(1→32, k=3) → BatchNorm → ReLU → MaxPool(2)    # 12 → 6
-       ↓
-Conv1d(32→64, k=3) → BatchNorm → ReLU → MaxPool(2)   # 6 → 3
-       ↓
-Flatten → FC(192→64) → Dropout → FC(64→N_classes)
-```
-
-参数量 ~19K，轻量级。
-
----
-
-## 命令行参考
-
-### `train.py` — 训练
+基于 `labels.py` 中的手势模板自动生成带噪声的训练数据。
 
 ```bash
-# 基本训练
-D:\anaconda\envs\1dcnn\python.exe train.py --train data/train.csv --test data/test.csv
+# 默认：每类200条 → data/train.json + data/train.csv
+python generate_data.py
 
-# 完整参数
-D:\anaconda\envs\1dcnn\python.exe train.py ^
-    --train data/train_all.csv ^
-    --test data/test.csv ^
-    --epochs 100 ^
-    --batch_size 64 ^
-    --lr 0.0005 ^
-    --dropout 0.3 ^
-    --save best_model.pth
-```
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--train` | 必填 | 训练数据 (.json/.csv) |
-| `--test` | — | 测试数据 (未提供则用 --test_ratio 划分) |
-| `--test_ratio` | 0.2 | 从训练集划分比例 |
-| `--epochs` | 50 | 训练轮数 |
-| `--batch_size` | 32 | 批量大小 |
-| `--lr` | 0.001 | 学习率 |
-| `--dropout` | 0.5 | Dropout 比例 |
-| `--save` | checkpoint.pth | 模型保存路径 |
-
-### `generate_data.py` — 生成数据
-
-```bash
-D:\anaconda\envs\1dcnn\python.exe generate_data.py --samples 300 --noise 0.1 --format csv
+# 自定义
+python generate_data.py --samples 300 --noise 0.15 --format csv --prefix test --outdir data
 ```
 
 | 参数 | 默认值 | 说明 |
@@ -155,199 +130,158 @@ D:\anaconda\envs\1dcnn\python.exe generate_data.py --samples 300 --noise 0.1 --f
 | `--prefix` | train | 文件名前缀 |
 | `--outdir` | data | 输出目录 |
 
-### `collect_data.py` — 数据采集
+---
+
+## 📡 真机采集 — `collect_data.py`
+
+通过蓝牙 BLE 或 USB 串口连接 ESP32，实时接收并标注手势数据。
 
 ```bash
-# 串口采集
-D:\anaconda\envs\1dcnn\python.exe collect_data.py --mode serial --port COM3
+# 交互式菜单（推荐）
+python collect_data.py
+
+# 串口采集（跳过菜单）
+python collect_data.py --mode serial --port COM3
 
 # 蓝牙采集
-D:\anaconda\envs\1dcnn\python.exe collect_data.py --mode ble --name "ESP32_Gesture"
+python collect_data.py --mode ble --name "ESP32_Gesture"
 
-# 监视模式 (不保存, 只实时打印)
-D:\anaconda\envs\1dcnn\python.exe collect_data.py --monitor --port COM3
+# 监视模式（只看不存）
+python collect_data.py --monitor --port COM3
 
-# 跳过标签交互
-D:\anaconda\envs\1dcnn\python.exe collect_data.py --mode serial --port COM3 --label 0
+# 指定标签（跳过交互）
+python collect_data.py --mode serial --port COM3 --label 1
 
-# 交互式菜单 (无参数)
-D:\anaconda\envs\1dcnn\python.exe collect_data.py
-# → 1: 串口采集 | 2: 蓝牙采集 | 3: 串口监视
-
-# 合并多次采集
-D:\anaconda\envs\1dcnn\python.exe collect_data.py --merge data/labeled_*.json -o data/train_all.csv
+# 合并多次采集结果
+python collect_data.py --merge data/labeled_*.json -o data/train_all.csv
 ```
+
+**工作流：** 连接 ESP32 → 摆好手势 → 按 Enter 开始采集 → 按 Enter 停止 → 输入标签 → 自动生成 `labeled_*.json/csv`
 
 | 参数 | 说明 |
 |------|------|
 | `--mode serial/ble` | 通信方式 |
 | `--port COM3` | 串口号 |
 | `--baud 115200` | 波特率 |
-| `--name ESP32_xxx` | BLE 设备名称 (模糊匹配) |
-| `--address AA:BB:...` | BLE MAC 地址 |
-| `--monitor` | 串口监视模式 (仅查看, 不保存) |
-| `--label 0` | 预填标签, 跳过交互 |
-| `--merge a.json b.csv -o out.csv` | 合并多个文件 |
+| `--name ESP32_xxx` | BLE 设备名（模糊匹配） |
+| `--monitor` | 仅监视，不保存 |
+| `--label 0` | 预填标签 |
+| `--merge a.json b.csv -o out.csv` | 合并文件 |
 
-### `visualization.py` — 可视化
+---
+
+## 🧠 模型训练 — `train.py`
 
 ```bash
-# 全部分析 (柱状图 + 手指对比 + 热力图)
-D:\anaconda\envs\1dcnn\python.exe visualization.py --data data/train.csv
+# 基本训练
+python train.py --train data/train.csv --test_ratio 0.2 --epochs 80
+
+# 完整参数
+python train.py --train data/train_all.csv --test data/test.csv `
+    --epochs 100 --batch_size 64 --lr 0.0005 --dropout 0.3 --save best_model.pth
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--train` | 必填 | 训练数据 (.json/.csv) |
+| `--test` | — | 测试数据（未提供则自动划分） |
+| `--test_ratio` | 0.2 | 从训练集划分比例 |
+| `--epochs` | 50 | 训练轮数 |
+| `--batch_size` | 32 | 批量大小 |
+| `--lr` | 0.001 | 学习率 |
+| `--dropout` | 0.5 | Dropout 比例 |
+| `--save` | checkpoint.pth | 模型保存路径 |
+
+### 模型架构
+
+```
+输入: (batch, 1, 12)        ← 左手6指 + 右手6指
+
+Conv1d(1→32,k=3) → BN → ReLU → MaxPool(2)    # 12 → 6
+Conv1d(32→64,k=3) → BN → ReLU → MaxPool(2)   # 6 → 3
+Flatten → FC(192→64) → Dropout → FC(64→N_classes)
+```
+
+**~19K 参数**，极轻量级，适合 ESP32 端侧部署。
+
+---
+
+## 📊 数据可视化 — `visualization.py`
+
+支持 5 种图表，帮助分析数据质量：
+
+```bash
+# 全部分析
+python visualization.py --data data/train.csv
 
 # 单独图表
-D:\anaconda\envs\1dcnn\python.exe visualization.py --heatmap data/train.csv
-D:\anaconda\envs\1dcnn\python.exe visualization.py --boxplot data/train.csv
+python visualization.py --heatmap data/train.csv    # 热力图
+python visualization.py --boxplot data/train.csv    # 箱线图
+python visualization.py --radar 0.25,0.50,...,0.05  # 单样本雷达图
 
-# 单样本雷达图
-D:\anaconda\envs\1dcnn\python.exe visualization.py --radar "0,1,0,0,0,0,0,1,0,0,0,0"
-
-# 交互式菜单
-D:\anaconda\envs\1dcnn\python.exe visualization.py
+# 查看某类手势
+python visualization.py --sample data/train.csv --label 1
 ```
 
-| 参数 | 说明 |
+| 图表 | 说明 |
 |------|------|
-| `--data` | 数据文件, 弹出全部 3 张图 |
-| `--heatmap` | 均值热力图 |
-| `--boxplot` | 箱线图 |
-| `--radar "0,0,1,..."` | 12 个手指值的雷达图 |
+| 📊 类别分布 | 每类样本数量柱状图 |
+| 📈 手指对比 | 各类别下每根手指的平均弯曲值 |
+| 🔥 热力图 | 数据整体分布情况 |
+| 📦 箱线图 | 每根手指的统计分布（中位数/四分位/异常值） |
+| 🕸️ 雷达图 | 单个样本的 12 维特征可视化 |
 
-### `export_for_esp32.py` — 模型导出
+---
+
+## 🔌 推理服务
+
+### `app.py` — 一体化服务（推荐）
+
+单命令启动 HTTP 网页 + WebSocket 推理：
 
 ```bash
-D:\anaconda\envs\1dcnn\python.exe export_for_esp32.py checkpoint.pth --out gesture_model
+python app.py                                    # 默认 HTTP:8088, WS:8765
+python app.py --http-port 3000 --ws-port 8766    # 自定义端口
+python app.py --num-classes 3 --threshold 0.6    # 3类, 高阈值
+python app.py --no-browser                       # 不自动开浏览器
 ```
 
-| 参数 | 说明 |
+- 启动后自动打开浏览器访问 `http://localhost:8088`
+- 网页上可连接蓝牙/串口设备，看到实时识别结果
+- HTTP API: `GET /api/status` `GET /api/shutdown`
+
+### `server.py` — 独立 WebSocket 推理
+
+```bash
+python server.py --num-classes 3 --threshold 0.5 --port 8765
+```
+
+### WebSocket 协议
+
+| 方向 | 格式 |
 |------|------|
-| `--out` | 输出前缀 |
-| `--num-classes 5` | 类别数 |
-| `--quantize` | INT8 量化 (缩小 4x) |
-| `--generate-h` | 同时生成 `.h` C 头文件 |
-| `--method onnx/ai_edge` | 转换方式 |
+| 客户端→服务端 | `{"features":[0.25,0.50,...,0.05]}` (12维) |
+|  | `{"left":{...},"right":{...}}` |
+|  | `{"cmd":"status"}` / `{"cmd":"shutdown"}` |
+| 服务端→客户端 | `{"type":"prediction","label":0,"name":"you","name_cn":"你","confidence":0.95,"all_probs":{...}}` |
 
 ---
 
-## 完整工作流
+## 📦 模型导出 — `export_for_esp32.py`
 
-```
-ESP32-S3 → 蓝牙/串口 → collect_data.py → labeled_*.csv
-                                               │
-                                    多次采集 → --merge 合并
-                                               ↓
-generate_data.py ──────────────────────→ train_all.csv
-                                               │
-                                          train.py
-                                               ↓
-                                        checkpoint.pth
-                                               │
-                                      export_for_esp32.py
-                                               ↓
-                                      gesture_model.tflite
-                                               ↓
-                                        ESP32-S3 推理
-
-train_all.csv ──→ visualization.py ──→ 数据图表
-```
-
----
-
-## 添加 / 修改手势标签
-
-> 💡 修改标签需要改 **3 个文件**，缺一不可。
-
-### 第 1 步：`1dcnn/labels.py`（Python 端，核心）
-
-编辑三处（以新增 label=5 的 "OK手势" 为例）：
-
-```python
-# ① 英文名 — 用于文件命名、ESP32 导出
-GESTURE_NAMES_EN[5] = "ok_sign"
-
-# ② 中文名 — 用于可视化、WebSocket 识别结果
-GESTURE_NAMES_CN[5] = "OK手势"
-
-# ③ 手指模板 — 用于 generate_data.py 生成模拟数据
-#    0.0 = 完全弯曲, 1.0 = 完全伸直
-GESTURE_TEMPLATES[5] = {
-    "left":  [0.8, 0.8, 0.0, 0.0, 0.0, 0.0],   # thumb~pinky
-    "right": [0.8, 0.8, 0.0, 0.0, 0.0, 0.0],
-}
-```
-
-### 第 2 步：`Web/labels.js`（网页端）
-
-在 `LABEL_MAP` 中添加英文→中文映射，与上面保持一致：
-
-```js
-export const LABEL_MAP = {
-    // ...
-    "ok_sign": "OK手势",   // ← 新增这一行
-};
-```
-
-### 第 3 步：训练/启动时指定新的类别数
+将训练好的 PyTorch 模型导出为 TFLite，供 ESP32 端侧推理：
 
 ```bash
-# 训练
-python train.py --train data/train_all.csv --epochs 60
-
-# 启动 WebSocket 服务（--num-classes 要匹配）
-python app.py --num-classes 6
+python export_for_esp32.py checkpoint.pth --num-classes 3
+python export_for_esp32.py checkpoint.pth --num-classes 3 --quantize   # INT8 量化
 ```
 
-### 哪些文件会自动同步？
+输出文件：`gesture_model.tflite` + `esp32_inference.cpp`（部署参考代码）。
 
-以下文件**无需手动修改**，它们从 `labels.py` / `labels.js` 自动读取：
-
-| 文件 | 自动读取内容 | 说明 |
-|------|-------------|------|
-| `train.py` | — | 自动从数据中检测类别数 |
-| `collect_data.py` | `GESTURE_NAMES_EN/CN` | 采集时提示可选标签 |
-| `visualization.py` | `GESTURE_NAMES_CN` | 图表中的中文标注 |
-| `generate_data.py` | `GESTURE_TEMPLATES` | 按模板生成模拟数据 |
-| `export_for_esp32.py` | `GESTURE_NAMES_EN` | ESP32 C++ 代码中的标签名 |
-| `server.py` / `app.py` | `GESTURE_NAMES_EN/CN` | WebSocket 识别结果 |
-| `Web/websocket_client.js` | `LABEL_MAP` (via labels.js) | 网页显示中文 |
-
-### 修改已有标签的名称
-
-只需改 `labels.py` 和 `labels.js` 中的名字字符串，**标签编号保持不变**，无需重新训练。
-
-### 删除标签
-
-从 `labels.py` 的 `GESTURE_NAMES_EN`、`GESTURE_NAMES_CN`、`GESTURE_TEMPLATES` 中删除对应编号，从 `labels.js` 的 `LABEL_MAP` 中删除对应键。**注意：标签编号不能有空缺**（如 0,1,3,4 缺少 2），否则模型输出维度与实际类别不匹配。
+> 依赖：`pip install onnx onnx2tf tensorflow`
 
 ---
 
-## 推理示例
+## 📄 License
 
-```python
-import torch
-from cnn import HandGestureCNN1D
-
-model = HandGestureCNN1D(num_classes=5)
-model.load_state_dict(torch.load("checkpoint.pth", weights_only=True))
-model.eval()
-
-# 食指指 (point)
-x = torch.tensor([[
-    [0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-     0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
-]], dtype=torch.float32)  # (1, 1, 12)
-
-with torch.no_grad():
-    pred = torch.argmax(model(x), dim=1).item()
-    print(f"预测: {pred}")  # → 2
-```
-
-## 依赖
-
-```bash
-pip install torch                # 必需
-pip install pyserial             # 串口采集
-pip install bleak                # 蓝牙采集
-pip install matplotlib numpy     # 可视化
-pip install onnx onnx2tf tensorflow  # 模型导出 (TFLite)
-```
+仅供学习与研究使用。

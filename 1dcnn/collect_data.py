@@ -29,6 +29,9 @@ ESP32 端数据格式要求 (二选一):
   python collect_data.py --mode ble --name "ESP32_Gesture"
   python collect_data.py --mode serial --port COM3 --label 2  # 跳过交互直接用标签2
 """
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import argparse
 import json
 import csv

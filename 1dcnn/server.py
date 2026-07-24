@@ -303,7 +303,7 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8765, help="监听端口 (默认 8765)")
     parser.add_argument("--model", default="checkpoint.pth", help="模型权重文件路径")
-    parser.add_argument("--num-classes", type=int, default=5, help="分类类别数 (默认 5)")
+    parser.add_argument("--num-classes", type=int, default=3, help="分类类别数 (默认 3)")
     parser.add_argument("--threshold", type=float, default=0.5,
                         help="置信度阈值，低于此值返回 unknown (默认 0.5)")
     parser.add_argument("--device", default=None, help="推理设备 (cpu/cuda，默认自动)")

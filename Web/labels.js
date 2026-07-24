@@ -21,6 +21,7 @@ export const LABEL_MAP = {
     // ── 1D-CNN 手势识别标签 ──
     "you":      "你",
     "good":     "好",
+    "meet":     "见面",
 
     // ── 后续可继续添加更多词汇 ──
     // "hello":    "你好",

@@ -22,6 +22,9 @@
   python generate_data.py --format csv              # 输出 CSV
   python generate_data.py --prefix test --samples 100  # 生成测试集
 """
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import argparse
 import json
 import csv
@@ -29,15 +32,22 @@ import random
 from pathlib import Path
 from typing import List, Tuple
 
-from labels import GESTURE_TEMPLATES, GESTURE_NAMES_EN
+from labels import GESTURE_TEMPLATES, GESTURE_NAMES_EN, FINGER_ORDER, FINGER_MIN, FINGER_MAX
+
+# 确保输出路径相对于脚本所在目录
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def add_noise(values: List[float], noise_level: float = 0.12) -> List[float]:
-    """给手指值添加随机噪声并 clamp 到 [0, 1]"""
-    return [
-        max(0.0, min(1.0, v + random.uniform(-noise_level, noise_level)))
-        for v in values
-    ]
+    """给手指值添加随机噪声, 按各手指范围 clamp"""
+    result = []
+    for i, v in enumerate(values):
+        name = FINGER_ORDER[i % 6]
+        mn = FINGER_MIN[name]
+        mx = FINGER_MAX[name]
+        noisy = v + random.uniform(-noise_level * (mx - mn), noise_level * (mx - mn))
+        result.append(max(mn, min(mx, noisy)))
+    return result
 
 
 def generate_samples(
@@ -148,6 +158,8 @@ def main():
     )
 
     outdir = Path(args.outdir)
+    if not outdir.is_absolute():
+        outdir = SCRIPT_DIR / outdir
 
     # 统计各类别数量
     from collections import Counter

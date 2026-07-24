@@ -5,6 +5,9 @@
     python train.py --train data/train.csv --test data/test.csv --epochs 50
     python train.py --train data/train.json --test_ratio 0.2 --epochs 30
 """
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import argparse
 import copy
 from pathlib import Path
