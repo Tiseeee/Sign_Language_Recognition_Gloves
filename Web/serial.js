@@ -64,6 +64,25 @@ class SerialFingerController {
             wrist: 0.4,
         };
 
+        // ---------- 数据滤波配置（解决跳变问题） ----------
+        this.FILTER_WINDOW_SIZE = 5;        // 中值滤波窗口大小
+        this.MAX_DELTA = 0.15;              // 最大变化率（每帧最大变化量）
+        this.LERP_FACTOR = 0.3;             // 线性插值因子（0-1，越小越平滑）
+        
+        // 历史数据缓冲区（用于中值滤波）
+        this._leftHistory = {};
+        this._rightHistory = {};
+        // 当前平滑值（用于变化率限制和低通滤波）
+        this._leftSmoothed = {};
+        this._rightSmoothed = {};
+        
+        for (const key of this.FINGER_KEYS) {
+            this._leftHistory[key] = [];
+            this._rightHistory[key] = [];
+            this._leftSmoothed[key] = 0;
+            this._rightSmoothed[key] = 0;
+        }
+
         // ---------- 采样频率指令格式（可自定义） ----------
         // 函数参数：频率值（数字），返回要发送的字符串
         this.frequencyCommandFormat = (freq) => `FREQ:${freq}`;
@@ -439,38 +458,67 @@ class SerialFingerController {
             if (key === 'wrist') {
                 mapped[key] = 0;
             } else if (typeof raw !== 'number' || isNaN(raw)) {
-                mapped[key] = 0;
+                mapped[key] = this._leftSmoothed[key];
             } else if (raw > 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, (raw / 100.0) * maxVal));
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
-                mapped[key] = 0;
+                mapped[key] = this._leftSmoothed[key];
             }
+        }
+
+        const smoothed = {};
+        for (const key of this.FINGER_KEYS) {
+            if (key === 'wrist') {
+                smoothed[key] = 0;
+                continue;
+            }
+
+            const current = mapped[key];
+            const history = this._leftHistory[key];
+            
+            history.push(current);
+            if (history.length > this.FILTER_WINDOW_SIZE) {
+                history.shift();
+            }
+
+            let filtered = current;
+            if (history.length >= 3) {
+                const sorted = [...history].sort((a, b) => a - b);
+                filtered = sorted[Math.floor(sorted.length / 2)];
+            }
+
+            const prev = this._leftSmoothed[key];
+            const delta = filtered - prev;
+            const clampedDelta = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, delta));
+            const lerped = prev + clampedDelta;
+            const final = lerped * (1 - this.LERP_FACTOR) + filtered * this.LERP_FACTOR;
+
+            smoothed[key] = Math.max(0, Math.min(this.FINGER_MAX[key], final));
+            this._leftSmoothed[key] = smoothed[key];
         }
 
         if (window.Re) {
             for (const key of this.FINGER_KEYS) {
-                window.Re[key] = mapped[key];
+                window.Re[key] = smoothed[key];
             }
-            // 节流UI刷新：每10帧刷新一次，避免DOM操作阻塞动画
             this._uiRefreshCount = (this._uiRefreshCount || 0) + 1;
             if (this._uiRefreshCount >= 10 && window.Vi) {
                 this._uiRefreshCount = 0;
                 window.Vi.refresh();
             }
-            this._updateBones(mapped);
+            this._updateBones(smoothed);
         }
 
-        // 节流日志：每10帧输出一次
         this._logCount = (this._logCount || 0) + 1;
         if (this._logCount >= 10) {
             this._logCount = 0;
-            console.log('🖐️ 手指值:', Object.entries(mapped)
+            console.log('🖐️ 手指值:', Object.entries(smoothed)
                 .map(([k, v]) => `${k}:${v.toFixed(3)}`).join(' '));
         }
 
-        if (this.onFingerData) this.onFingerData(mapped);
+        if (this.onFingerData) this.onFingerData(smoothed);
     }
 
     _updateRightFingers(fingerData) {
@@ -482,17 +530,47 @@ class SerialFingerController {
             if (key === 'wrist') {
                 mapped[key] = 0;
             } else if (typeof raw !== 'number' || isNaN(raw)) {
-                mapped[key] = 0;
+                mapped[key] = this._rightSmoothed[key];
             } else if (raw > 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, (raw / 100.0) * maxVal));
             } else if (raw >= 0 && raw <= 1) {
                 mapped[key] = Math.min(maxVal, Math.max(0, raw * maxVal));
             } else {
-                mapped[key] = 0;
+                mapped[key] = this._rightSmoothed[key];
             }
         }
 
-        // 同步右手骨骼
+        const smoothed = {};
+        for (const key of this.FINGER_KEYS) {
+            if (key === 'wrist') {
+                smoothed[key] = 0;
+                continue;
+            }
+
+            const current = mapped[key];
+            const history = this._rightHistory[key];
+            
+            history.push(current);
+            if (history.length > this.FILTER_WINDOW_SIZE) {
+                history.shift();
+            }
+
+            let filtered = current;
+            if (history.length >= 3) {
+                const sorted = [...history].sort((a, b) => a - b);
+                filtered = sorted[Math.floor(sorted.length / 2)];
+            }
+
+            const prev = this._rightSmoothed[key];
+            const delta = filtered - prev;
+            const clampedDelta = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, delta));
+            const lerped = prev + clampedDelta;
+            const final = lerped * (1 - this.LERP_FACTOR) + filtered * this.LERP_FACTOR;
+
+            smoothed[key] = Math.max(0, Math.min(this.FINGER_MAX[key], final));
+            this._rightSmoothed[key] = smoothed[key];
+        }
+
         const rightHand = window.We?.getObjectByName?.('RightHand');
         if (rightHand && rightHand.skeleton) {
             const bones = rightHand.skeleton.bones;
@@ -506,7 +584,7 @@ class SerialFingerController {
                     pinky: [19, 20, 21],
                 };
                 for (const [key, indices] of Object.entries(boneMap)) {
-                    const val = mapped[key] || 0;
+                    const val = smoothed[key] || 0;
                     for (const idx of indices) {
                         if (bones[idx]) bones[idx].rotation.x = val;
                     }
@@ -514,12 +592,10 @@ class SerialFingerController {
             }
         }
 
-        // 同步右手 Tweakpane 参数（复用左手的节流计数器）
         if (window.RIGHT_PARAMS) {
             for (const key of this.FINGER_KEYS) {
-                window.RIGHT_PARAMS[key] = mapped[key];
+                window.RIGHT_PARAMS[key] = smoothed[key];
             }
-            // UI刷新已在 _updateFingers 中节流处理，此处不再重复调用
         }
 
         // 节流日志：每10帧输出一次

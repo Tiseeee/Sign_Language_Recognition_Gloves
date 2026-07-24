@@ -38,16 +38,22 @@ class BluetoothFingerController {
             wrist: 0.4,
         };
 
-        // ---------- 数据滤波配置 ----------
-        this.MEDIAN_WINDOW_SIZE = 5;  // 中值滤波窗口大小
-        this.OUTLIER_THRESHOLD = 0.3; // 异常值检测阈值（变化超过30%）
+        // ---------- 数据滤波配置（解决跳变问题） ----------
+        this.FILTER_WINDOW_SIZE = 5;        // 中值滤波窗口大小
+        this.MAX_DELTA = 0.15;              // 最大变化率（每帧最大变化量）
+        this.LERP_FACTOR = 0.3;             // 线性插值因子（0-1，越小越平滑）
 
-        // 存储历史数据用于中值滤波
+        // 历史数据缓冲区（用于中值滤波）
         this._leftHistory = {};
         this._rightHistory = {};
+        // 当前平滑值（用于变化率限制和低通滤波）
+        this._leftSmoothed = {};
+        this._rightSmoothed = {};
         for (const key of this.FINGER_KEYS) {
             this._leftHistory[key] = [];
             this._rightHistory[key] = [];
+            this._leftSmoothed[key] = 0;
+            this._rightSmoothed[key] = 0;
         }
 
         this.frequencyCommandFormat = (freq) => `FREQ:${freq}`;
@@ -391,9 +397,40 @@ class BluetoothFingerController {
     _updateFingers(fingerData) {
         const mapped = this._mapFingerData(fingerData);
 
-        this._targetValues = mapped;
+        const smoothed = {};
+        for (const key of this.FINGER_KEYS) {
+            if (key === 'wrist') {
+                smoothed[key] = 0;
+                continue;
+            }
+
+            const current = mapped[key];
+            const history = this._leftHistory[key];
+            
+            history.push(current);
+            if (history.length > this.FILTER_WINDOW_SIZE) {
+                history.shift();
+            }
+
+            let filtered = current;
+            if (history.length >= 3) {
+                const sorted = [...history].sort((a, b) => a - b);
+                filtered = sorted[Math.floor(sorted.length / 2)];
+            }
+
+            const prev = this._leftSmoothed[key];
+            const delta = filtered - prev;
+            const clampedDelta = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, delta));
+            const lerped = prev + clampedDelta;
+            const final = lerped * (1 - this.LERP_FACTOR) + filtered * this.LERP_FACTOR;
+
+            smoothed[key] = Math.max(0, Math.min(this.FINGER_MAX[key], final));
+            this._leftSmoothed[key] = smoothed[key];
+        }
+
+        this._targetValues = smoothed;
         if (!this._currentValues) {
-            this._currentValues = { ...mapped };
+            this._currentValues = { ...smoothed };
         }
 
         if (!this._rafRunning) {
@@ -401,16 +438,47 @@ class BluetoothFingerController {
             this._interpolateLoop();
         }
 
-        if (this.onFingerData) this.onFingerData(mapped);
+        if (this.onFingerData) this.onFingerData(smoothed);
     }
 
     _updateRightFingers(fingerData) {
         if (!fingerData) return;
         const mapped = this._mapFingerData(fingerData);
 
-        this._rightTargetValues = mapped;
+        const smoothed = {};
+        for (const key of this.FINGER_KEYS) {
+            if (key === 'wrist') {
+                smoothed[key] = 0;
+                continue;
+            }
+
+            const current = mapped[key];
+            const history = this._rightHistory[key];
+            
+            history.push(current);
+            if (history.length > this.FILTER_WINDOW_SIZE) {
+                history.shift();
+            }
+
+            let filtered = current;
+            if (history.length >= 3) {
+                const sorted = [...history].sort((a, b) => a - b);
+                filtered = sorted[Math.floor(sorted.length / 2)];
+            }
+
+            const prev = this._rightSmoothed[key];
+            const delta = filtered - prev;
+            const clampedDelta = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, delta));
+            const lerped = prev + clampedDelta;
+            const final = lerped * (1 - this.LERP_FACTOR) + filtered * this.LERP_FACTOR;
+
+            smoothed[key] = Math.max(0, Math.min(this.FINGER_MAX[key], final));
+            this._rightSmoothed[key] = smoothed[key];
+        }
+
+        this._rightTargetValues = smoothed;
         if (!this._rightCurrentValues) {
-            this._rightCurrentValues = { ...mapped };
+            this._rightCurrentValues = { ...smoothed };
         }
     }
 
