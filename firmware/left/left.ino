@@ -121,11 +121,11 @@ uint32_t last_mpu_us = 0;
 
 // ========== Flex Sensor 配置 ==========
 int FLEX_PINS[FLEX_COUNT] = {
-  14, // 大拇指
-  10, // 食指
+  4, // 大拇指
+  7, // 食指
   18, // 中指
-  7, // 无名指
-  4  // 小拇指
+  10, // 无名指
+  14  // 小拇指
 };
 
 const float ADC_MAX = 4095.0;
