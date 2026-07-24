@@ -18,6 +18,14 @@ export const LABEL_MAP = {
     "nine":  "九",
     "ten":   "十",
 
+    // ── 1D-CNN 手势识别标签 ──
+    "open":      "张开手掌",
+    "fist":      "握拳",
+    "point":     "食指指",
+    "thumb_up":  "点赞",
+    "peace":     "胜利V",
+    "unknown":   "未知手势",
+
     // ── 后续可继续添加更多词汇 ──
     // "hello":    "你好",
     // "thanks":   "谢谢",
