@@ -772,14 +772,14 @@ function createSerialUI() {
     font-family: inherit;
     font-size: 12px;
   `;
-    const freqOptions = [10, 20, 50, 100];
+    const freqOptions = [10, 20, 50, 60, 100];
     freqOptions.forEach(f => {
         const opt = document.createElement('option');
         opt.value = f;
         opt.textContent = f + ' Hz';
         freqSelect.appendChild(opt);
     });
-    freqSelect.value = '20'; // 默认
+    freqSelect.value = '50'; // 默认
 
     // 频率设置按钮
     const freqBtn = document.createElement('button');

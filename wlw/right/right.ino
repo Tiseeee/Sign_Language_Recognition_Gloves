@@ -169,6 +169,10 @@ public:
     void begin(const char* deviceName) {
         BLEDevice::init(deviceName);
 
+        // 设置本地MTU为185字节（默认23字节）
+        // 提高单次notify传输容量：一行CSV数据约35字节可一次发送完成
+        BLEDevice::setMTU(185);
+
         pServer = BLEDevice::createServer();
         pServer->setCallbacks(new BleServerCallbacks());
 
@@ -269,7 +273,9 @@ private:
             bleTxBuffer = "";
             return;
         }
-        const int CHUNK = 20;
+        // MTU协商后（185字节），单次notify可发送180字节数据
+        // 一行CSV数据约35字节，一次notify即可完成传输
+        const int CHUNK = 180;
         while (bleTxBuffer.length() > 0) {
             int chunkLen = min((int)bleTxBuffer.length(), CHUNK);
             pTxCharacteristic->setValue((uint8_t*)bleTxBuffer.c_str(), chunkLen);
@@ -353,8 +359,8 @@ int calibCountdown = 0;
 int calibStageDelay = 5000;
 unsigned long lastWaitLogMs = 0;  // 上次输出等待提示的时间（避免日志刷屏）
 
-int sampleFrequency = 30;
-unsigned long sampleIntervalMs = 33;
+int sampleFrequency = 50;
+unsigned long sampleIntervalMs = 20;
 unsigned long lastSampleMs = 0;
 
 // ========== 函数声明 ==========

@@ -47,8 +47,8 @@
 // ========== ESP-NOW 配置 ==========
 #define ESPNOW_CHANNEL    1     // ESPNOW信道（需与right设备一致）
 #define MAX_RETRY_COUNT   3     // 最大重发次数
-#define SEND_QUEUE_SIZE   8     // 发送队列大小
-#define DATA_RATE_HZ      30    // 数据传输速率（Hz）
+#define SEND_QUEUE_SIZE   16    // 发送队列大小（增大以支持更高采样频率）
+#define DATA_RATE_HZ      50    // 数据传输速率（Hz）
 #define CALIB_CMD_DATA_TYPE 0x02  // 校准指令数据类型（由right设备同步触发）
 #define READY_DATA_TYPE    0x03  // 就绪心跳数据类型（校准前定期发送，通知right本设备已在线）
 
@@ -136,8 +136,8 @@ float voltageBent[FLEX_COUNT];
 
 bool calibrated = false;
 
-int sampleFrequency = 20;
-unsigned long sampleIntervalMs = 50;
+int sampleFrequency = 50;
+unsigned long sampleIntervalMs = 20;
 unsigned long lastSampleMs = 0;
 
 // ========== 数据滤波与异常检测配置 ==========
