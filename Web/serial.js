@@ -358,6 +358,8 @@ class SerialFingerController {
                     }
                     if (obj.left || obj.right) {
                         this._onValidLine();
+                        // 转发原始数据到 WebSocket 进行 CNN 识别
+                        this._forwardToWS(obj.left || {}, obj.right || {});
                         return;
                     }
                 }
@@ -402,6 +404,11 @@ class SerialFingerController {
                 this._onValidLine();
                 this._updateFingers(leftResult);
                 this._updateRightFingers(rightResult);
+                // 转发原始 CSV 数据到 WebSocket (0~1 范围)
+                this._forwardFeaturesToWS([
+                    ...leftNums.map(n => n > 1 ? n / 100 : n),
+                    ...rightNums.map(n => n > 1 ? n / 100 : n),
+                ]);
                 return;
             }
         }
@@ -628,6 +635,22 @@ class SerialFingerController {
                     }
                 }
             }
+        }
+    }
+
+    // ---------- 转发原始数据到 WebSocket 进行 CNN 识别 ----------
+    // 发送原始 0~1 范围的手指数据（未经 FINGER_MAX 缩放）
+    _forwardToWS(leftRaw, rightRaw) {
+        // 使用 window.sendHandData（由 websocket_client.js 挂载）
+        if (typeof window.sendHandData === 'function') {
+            window.sendHandData(leftRaw || {}, rightRaw || {});
+        }
+    }
+
+    // 发送原始 12 维特征向量
+    _forwardFeaturesToWS(features) {
+        if (typeof window.sendFeatures === 'function') {
+            window.sendFeatures(features);
         }
     }
 }

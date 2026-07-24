@@ -253,25 +253,71 @@ train_all.csv ──→ visualization.py ──→ 数据图表
 
 ---
 
-## 添加自定义手势
+## 添加 / 修改手势标签
 
-编辑 `labels.py` 的三处：
+> 💡 修改标签需要改 **3 个文件**，缺一不可。
+
+### 第 1 步：`1dcnn/labels.py`（Python 端，核心）
+
+编辑三处（以新增 label=5 的 "OK手势" 为例）：
 
 ```python
-# 1. 英文名
+# ① 英文名 — 用于文件命名、ESP32 导出
 GESTURE_NAMES_EN[5] = "ok_sign"
 
-# 2. 中文名
+# ② 中文名 — 用于可视化、WebSocket 识别结果
 GESTURE_NAMES_CN[5] = "OK手势"
 
-# 3. 手指模板 (generate_data.py 用)
+# ③ 手指模板 — 用于 generate_data.py 生成模拟数据
+#    0.0 = 完全弯曲, 1.0 = 完全伸直
 GESTURE_TEMPLATES[5] = {
-    "left":  [0.8, 0.8, 0.0, 0.0, 0.0, 0.0],
+    "left":  [0.8, 0.8, 0.0, 0.0, 0.0, 0.0],   # thumb~pinky
     "right": [0.8, 0.8, 0.0, 0.0, 0.0, 0.0],
 }
 ```
 
-所有模块自动同步：采集标签提示、可视化图表标注、ESP32 代码等无需手动修改。
+### 第 2 步：`Web/labels.js`（网页端）
+
+在 `LABEL_MAP` 中添加英文→中文映射，与上面保持一致：
+
+```js
+export const LABEL_MAP = {
+    // ...
+    "ok_sign": "OK手势",   // ← 新增这一行
+};
+```
+
+### 第 3 步：训练/启动时指定新的类别数
+
+```bash
+# 训练
+python train.py --train data/train_all.csv --epochs 60
+
+# 启动 WebSocket 服务（--num-classes 要匹配）
+python app.py --num-classes 6
+```
+
+### 哪些文件会自动同步？
+
+以下文件**无需手动修改**，它们从 `labels.py` / `labels.js` 自动读取：
+
+| 文件 | 自动读取内容 | 说明 |
+|------|-------------|------|
+| `train.py` | — | 自动从数据中检测类别数 |
+| `collect_data.py` | `GESTURE_NAMES_EN/CN` | 采集时提示可选标签 |
+| `visualization.py` | `GESTURE_NAMES_CN` | 图表中的中文标注 |
+| `generate_data.py` | `GESTURE_TEMPLATES` | 按模板生成模拟数据 |
+| `export_for_esp32.py` | `GESTURE_NAMES_EN` | ESP32 C++ 代码中的标签名 |
+| `server.py` / `app.py` | `GESTURE_NAMES_EN/CN` | WebSocket 识别结果 |
+| `Web/websocket_client.js` | `LABEL_MAP` (via labels.js) | 网页显示中文 |
+
+### 修改已有标签的名称
+
+只需改 `labels.py` 和 `labels.js` 中的名字字符串，**标签编号保持不变**，无需重新训练。
+
+### 删除标签
+
+从 `labels.py` 的 `GESTURE_NAMES_EN`、`GESTURE_NAMES_CN`、`GESTURE_TEMPLATES` 中删除对应编号，从 `labels.js` 的 `LABEL_MAP` 中删除对应键。**注意：标签编号不能有空缺**（如 0,1,3,4 缺少 2），否则模型输出维度与实际类别不匹配。
 
 ---
 

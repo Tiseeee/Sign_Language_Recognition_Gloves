@@ -1,0 +1,4 @@
+# 1D-CNN 手势识别 WebSocket 服务端依赖
+websockets>=12.0
+torch>=2.0.0
+numpy>=1.24.0
