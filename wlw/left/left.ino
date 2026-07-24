@@ -140,6 +140,11 @@ int sampleFrequency = 20;
 unsigned long sampleIntervalMs = 50;
 unsigned long lastSampleMs = 0;
 
+// ========== 数据滤波与异常检测配置 ==========
+const float FILTER_ALPHA = 0.7f;       // 一阶低通滤波系数 (0-1, 越大响应越快)
+const float OUTLIER_THRESHOLD = 20.0f; // 异常值检测阈值（百分比变化超过此值视为异常）
+float filteredBendPercent[FLEX_COUNT] = {0}; // 滤波后的弯曲百分比
+
 // ========== 函数声明 ==========
 void waitSeconds(int sec);
 void calibrateStraightAll();
@@ -547,6 +552,22 @@ void loop() {
     int rawValue = analogRead(FLEX_PINS[i]);
     float volt = rawValue / ADC_MAX * VREF;
     bendPercent[i] = getBendPercent(volt, i);
+  }
+
+  // ========== 数据滤波与异常值检测 ==========
+  for (int i = 0; i < FLEX_COUNT; i++) {
+    int rawPercent = bendPercent[i];
+    
+    // 异常值检测：如果当前值与滤波值差异超过阈值，保留上次滤波值
+    float diff = abs(rawPercent - filteredBendPercent[i]);
+    if (diff > OUTLIER_THRESHOLD && calibrated) {
+      // 异常值，保持上次滤波值不变
+      bendPercent[i] = (int)filteredBendPercent[i];
+    } else {
+      // 正常数据，应用一阶低通滤波
+      filteredBendPercent[i] = FILTER_ALPHA * rawPercent + (1.0f - FILTER_ALPHA) * filteredBendPercent[i];
+      bendPercent[i] = (int)(filteredBendPercent[i] + 0.5f);
+    }
   }
 
   // ========== 构建ESP-NOW数据包并发送 ==========

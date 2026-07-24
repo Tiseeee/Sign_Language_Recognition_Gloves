@@ -332,6 +332,11 @@ float voltageBent[FLEX_COUNT];
 
 bool calibrated = false;
 
+// ========== 数据滤波与异常检测配置 ==========
+const float FILTER_ALPHA = 0.7f;       // 一阶低通滤波系数 (0-1, 越大响应越快)
+const float OUTLIER_THRESHOLD = 20.0f; // 异常值检测阈值（百分比变化超过此值视为异常）
+float filteredBendPercent[FLEX_COUNT] = {0}; // 滤波后的弯曲百分比
+
 // ========== 校准状态机 ==========
 enum CalibState {
   CALIB_IDLE,
@@ -747,6 +752,19 @@ void loop() {
     int rawValue = analogRead(FLEX_PINS[i]);
     float volt = rawValue / ADC_MAX * VREF;
     bendPercent[i] = getBendPercent(volt, i);
+  }
+
+  // ========== 数据滤波与异常值检测 ==========
+  for (int i = 0; i < FLEX_COUNT; i++) {
+    int rawPercent = bendPercent[i];
+    
+    float diff = abs(rawPercent - filteredBendPercent[i]);
+    if (diff > OUTLIER_THRESHOLD && calibrated) {
+      bendPercent[i] = (int)filteredBendPercent[i];
+    } else {
+      filteredBendPercent[i] = FILTER_ALPHA * rawPercent + (1.0f - FILTER_ALPHA) * filteredBendPercent[i];
+      bendPercent[i] = (int)(filteredBendPercent[i] + 0.5f);
+    }
   }
 
   // ========== 更新right设备本地数据缓存 ==========
