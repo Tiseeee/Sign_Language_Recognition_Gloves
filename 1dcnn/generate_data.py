@@ -32,7 +32,7 @@ import random
 from pathlib import Path
 from typing import List, Tuple
 
-from labels import GESTURE_TEMPLATES, GESTURE_NAMES_EN, FINGER_ORDER, FINGER_MIN, FINGER_MAX
+from labels import GESTURE_TEMPLATES, GESTURE_NAMES_EN, FINGER_ORDER, FINGER_MIN, FINGER_MAX, normalize_features
 
 # 确保输出路径相对于脚本所在目录
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -78,7 +78,8 @@ def generate_samples(
             if noise_level > 0:
                 right = add_noise(template["right"], noise_level * 1.5)
 
-            features = left + right  # 12 个值
+            features = left + right  # 12 个值（传感器原始值）
+            features = normalize_features(features)  # 归一化到 [0, 1]
             all_samples.append({
                 "features": features,
                 "label": label,
@@ -138,7 +139,7 @@ def save_csv(samples: List[dict], filepath: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="生成模拟双手手势数据集")
-    parser.add_argument("--samples", type=int, default=200,
+    parser.add_argument("--samples", type=int, default=400,
                         help="每类样本数 (默认200, 总样本=类别数×此值)")
     parser.add_argument("--noise", type=float, default=0.12,
                         help="噪声幅度 (0~0.3, 默认0.12)")

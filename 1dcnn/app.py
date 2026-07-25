@@ -75,7 +75,7 @@ _start_time = None
 # ============================================================
 
 class GesturePredictor:
-    def __init__(self, model_path: str, num_classes: int = 5,
+    def __init__(self, model_path: str, num_classes: int = 6,
                  threshold: float = 0.5, device: Optional[str] = None):
         self.threshold = threshold
         self.num_classes = num_classes
@@ -360,7 +360,7 @@ def main():
     parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket 端口 (默认 8765)")
     parser.add_argument("--host", default="0.0.0.0", help="监听地址")
     parser.add_argument("--model", default="checkpoint.pth", help="模型权重文件")
-    parser.add_argument("--num-classes", type=int, default=3, help="分类类别数 (默认 3)")
+    parser.add_argument("--num-classes", type=int, default=6, help="分类类别数 (默认 6)")
     parser.add_argument("--threshold", type=float, default=0.5, help="置信度阈值")
     parser.add_argument("--device", default=None)
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
@@ -416,8 +416,6 @@ def main():
     http_thread.start()
 
     # 自动打开浏览器
-    if not args.no_browser:
-        webbrowser.open(f"http://localhost:{args.http_port}")
 
     # 启动 WebSocket (主事件循环)
     try:

@@ -19,9 +19,12 @@ export const LABEL_MAP = {
     "ten":   "十",
 
     // ── 1D-CNN 手势识别标签 ──
-    "you":      "你",
-    "good":     "好",
-    "meet":     "见面",
+    "zero":  "零",
+    "one":   "一",
+    "two":   "二",
+    "three": "三",
+    "four":  "四",
+    "five":  "五",
 
     // ── 后续可继续添加更多词汇 ──
     // "hello":    "你好",

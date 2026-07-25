@@ -45,7 +45,7 @@ from websockets.asyncio.server import serve
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cnn import HandGestureCNN1D
-from labels import FINGER_ORDER, GESTURE_NAMES_EN, GESTURE_NAMES_CN, gesture_name
+from labels import FINGER_ORDER, GESTURE_NAMES_EN, GESTURE_NAMES_CN, gesture_name, normalize_features
 
 # ============================================================
 #  日志配置
@@ -68,7 +68,7 @@ class GesturePredictor:
     def __init__(
         self,
         model_path: str,
-        num_classes: int = 5,
+        num_classes: int = 6,
         threshold: float = 0.5,
         device: Optional[str] = None,
     ):
@@ -269,7 +269,8 @@ async def handler(websocket, predictor: GesturePredictor, manager: ConnectionMan
                 await websocket.send(err_msg)
                 continue
 
-            # 推理
+            # 归一化后推理
+            features = normalize_features(features)
             result = predictor.predict(features)
             result["type"] = "prediction"
 
@@ -303,7 +304,7 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8765, help="监听端口 (默认 8765)")
     parser.add_argument("--model", default="checkpoint.pth", help="模型权重文件路径")
-    parser.add_argument("--num-classes", type=int, default=3, help="分类类别数 (默认 3)")
+    parser.add_argument("--num-classes", type=int, default=6, help="分类类别数 (默认 6)")
     parser.add_argument("--threshold", type=float, default=0.5,
                         help="置信度阈值，低于此值返回 unknown (默认 0.5)")
     parser.add_argument("--device", default=None, help="推理设备 (cpu/cuda，默认自动)")
