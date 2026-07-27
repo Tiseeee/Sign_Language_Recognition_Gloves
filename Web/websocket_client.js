@@ -106,6 +106,9 @@ export function initWebSocket() {
             // info 消息
             if (data.type === 'info') {
                 console.log('ℹ️', data.message);
+                panel.innerHTML = `<div style="color:#f39c12;">ℹ️ ${data.message}</div>`;
+                panel.style.background = 'rgba(0,0,0,0.78)';
+                panel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.5), 0 0 0 2px #f39c12';
                 return;
             }
             // error

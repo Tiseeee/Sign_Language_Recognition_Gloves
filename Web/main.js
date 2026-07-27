@@ -1,4 +1,6 @@
 import './serial.js'
+import './test_panel.js'
+import './labels.js'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -340,6 +342,35 @@ const setBones = () => {
         ring3.rotation.x = (ev.value)
       })
 
+  const syncLeftHand = () => {
+    wrist1.rotation.x = PARAMS.wrist
+    wrist2.rotation.x = PARAMS.wrist
+    wrist3.rotation.x = PARAMS.wrist
+    wrist4.rotation.x = PARAMS.wrist
+    wrist5.rotation.x = PARAMS.wrist
+    wrist6.rotation.x = PARAMS.wrist
+
+    thumb1.rotation.x = PARAMS.thumb
+    thumb2.rotation.x = PARAMS.thumb
+    thumb3.rotation.x = PARAMS.thumb
+
+    index1.rotation.x = PARAMS.index
+    index2.rotation.x = PARAMS.index
+    index3.rotation.x = PARAMS.index
+
+    middle1.rotation.x = PARAMS.middle
+    middle2.rotation.x = PARAMS.middle
+    middle3.rotation.x = PARAMS.middle
+
+    ring1.rotation.x = PARAMS.ring
+    ring2.rotation.x = PARAMS.ring
+    ring3.rotation.x = PARAMS.ring
+
+    pinky1.rotation.x = PARAMS.pinky
+    pinky2.rotation.x = PARAMS.pinky
+    pinky3.rotation.x = PARAMS.pinky
+  }
+
   // Pinky
   clench.addInput(PARAMS, 'pinky', {min: 0, max: 1.15, step: 0.01, label: '小指'})
       .on('change', (ev) => {
@@ -348,6 +379,7 @@ const setBones = () => {
         pinky3.rotation.x = (ev.value)
       })
 
+  window.leftBonesSync = syncLeftHand
   }
 
 const setRightBones = () => {
